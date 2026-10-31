@@ -1,0 +1,773 @@
+package com.github.damontecres.wholphin.ui.discover
+
+import androidx.annotation.StringRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Icon
+import androidx.tv.material3.LocalContentColor
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
+import androidx.tv.material3.Text
+import com.github.damontecres.wholphin.R
+import com.github.damontecres.wholphin.api.seerr.RequestApi
+import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
+import com.github.damontecres.wholphin.api.seerr.model.MediaRequest
+import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
+import com.github.damontecres.wholphin.data.model.DiscoverItem
+import com.github.damontecres.wholphin.data.model.DownloadProgress
+import com.github.damontecres.wholphin.data.model.DownloadState
+import com.github.damontecres.wholphin.data.model.RequestStatus
+import com.github.damontecres.wholphin.data.model.SeerrAvailability
+import com.github.damontecres.wholphin.data.model.downloadPercent
+import com.github.damontecres.wholphin.data.model.downloadProgress
+import com.github.damontecres.wholphin.data.model.downloadRefreshDelay
+import com.github.damontecres.wholphin.data.model.hasMoreDownloads
+import com.github.damontecres.wholphin.data.model.keepsRefreshing
+import com.github.damontecres.wholphin.data.model.nextRefreshBatch
+import com.github.damontecres.wholphin.data.model.seenInQueue
+import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.SeerrServerRepository
+import com.github.damontecres.wholphin.services.SeerrService
+import com.github.damontecres.wholphin.ui.AspectRatios
+import com.github.damontecres.wholphin.ui.cards.ItemCardImage
+import com.github.damontecres.wholphin.ui.components.CircularProgress
+import com.github.damontecres.wholphin.ui.components.GridTitle
+import com.github.damontecres.wholphin.ui.components.LoadingPage
+import com.github.damontecres.wholphin.ui.components.TextButton
+import com.github.damontecres.wholphin.ui.formatDuration
+import com.github.damontecres.wholphin.ui.ifElse
+import com.github.damontecres.wholphin.ui.launchIO
+import com.github.damontecres.wholphin.ui.nav.Destination
+import com.github.damontecres.wholphin.ui.rememberInt
+import com.github.damontecres.wholphin.ui.tryRequestFocus
+import com.github.damontecres.wholphin.util.DataLoadingState
+import com.github.damontecres.wholphin.util.WholphinDispatchers
+import com.github.damontecres.wholphin.util.successValue
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import org.jellyfin.sdk.api.client.ApiClient
+import org.jellyfin.sdk.api.client.extensions.userLibraryApi
+import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.ImageType
+import org.jellyfin.sdk.model.serializer.toUUIDOrNull
+import timber.log.Timber
+import java.time.Instant
+import java.util.UUID
+import javax.inject.Inject
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+
+// A page costs one GET /request plus one GET /movie for each row, the TV is on weak Wi-Fi
+internal const val DOWNLOADS_PAGE_SIZE = 20
+internal const val MAX_ROWS_PER_REFRESH = 10
+private const val MAX_CONCURRENT_REQUESTS = 3
+private const val ROWS_LOADED_AHEAD = 5
+private val ROW_HEIGHT = 128.dp
+
+/**
+ * A movie the user requested
+ *
+ * @param item the movie's details, null until they have been fetched
+ * @param jellyfinItemId only set once the user's Jellyfin has returned the item
+ * @param seenInQueue whether a download was seen, which tells searching apart from importing
+ */
+data class DownloadRow(
+    val requestId: Int,
+    val tmdbId: Int,
+    val is4k: Boolean,
+    val requestStatus: RequestStatus,
+    val requestExists: Boolean = true,
+    val item: DiscoverItem? = null,
+    val jellyfinItemId: UUID? = null,
+    val seenInQueue: Boolean = false,
+    val progress: DownloadProgress = DownloadProgress(DownloadState.SEARCHING),
+) {
+    val refreshing: Boolean get() = keepsRefreshing(progress.state, requestStatus)
+}
+
+data class DownloadsState(
+    val rows: DataLoadingState<List<DownloadRow>> = DataLoadingState.Pending,
+    val fetched: Int = 0,
+    val hasMore: Boolean = false,
+    val loadingMore: Boolean = false,
+    val loadMoreFailed: Boolean = false,
+    val refreshFailed: Boolean = false,
+) {
+    val refreshing: Boolean get() = rows.successValue?.any { it.refreshing } == true
+}
+
+private data class DownloadsResult(
+    val rows: List<DownloadRow>,
+    val fetched: Int,
+    val hasMore: Boolean,
+)
+
+@HiltViewModel
+class DownloadsViewModel
+    @Inject
+    constructor(
+        private val api: ApiClient,
+        private val seerrService: SeerrService,
+        private val seerrServerRepository: SeerrServerRepository,
+        val navigationManager: NavigationManager,
+    ) : ViewModel() {
+        private val _state = MutableStateFlow(DownloadsState())
+        val state: StateFlow<DownloadsState> = _state
+
+        private val limiter = Semaphore(MAX_CONCURRENT_REQUESTS)
+        private val reloads = MutableStateFlow(0)
+        private var loadMoreJob: Job? = null
+        private var refreshStart = 0
+
+        @Volatile
+        private var userId: Int? = null
+
+        @Volatile
+        private var lastRefresh: TimeMark = TimeSource.Monotonic.markNow()
+
+        init {
+            viewModelScope.launchIO {
+                combine(
+                    seerrServerRepository.currentUserId.distinctUntilChanged(),
+                    reloads,
+                ) { userId, _ -> userId }
+                    .collectLatest { load(it) }
+            }
+        }
+
+        fun retry() {
+            reloads.update { it + 1 }
+        }
+
+        private suspend fun load(userId: Int?) {
+            loadMoreJob?.cancel()
+            this.userId = userId
+            _state.value = DownloadsState(rows = DataLoadingState.Loading)
+            if (userId == null) {
+                _state.value = DownloadsState(rows = DataLoadingState.Error())
+                return
+            }
+            _state.value =
+                try {
+                    val page = fetchPage(userId, 0)
+                    lastRefresh = TimeSource.Monotonic.markNow()
+                    DownloadsState(
+                        rows = DataLoadingState.Success(page.rows),
+                        fetched = page.fetched,
+                        hasMore = page.hasMore,
+                    )
+                } catch (ex: CancellationException) {
+                    throw ex
+                } catch (ex: Exception) {
+                    Timber.e(ex, "Error fetching downloads")
+                    DownloadsState(rows = DataLoadingState.Error(ex))
+                }
+        }
+
+        /**
+         * Load the next page, if there is one and the last attempt didn't fail
+         */
+        fun loadMore() {
+            val userId = userId ?: return
+            var start = false
+            var skip = 0
+            _state.update {
+                start = it.hasMore && !it.loadingMore && !it.loadMoreFailed
+                skip = it.fetched
+                if (start) it.copy(loadingMore = true) else it
+            }
+            if (!start) return
+            loadMoreJob =
+                viewModelScope.launchIO {
+                    try {
+                        val page = fetchPage(userId, skip)
+                        _state.update { current ->
+                            val rows = current.rows.successValue ?: return@update current
+                            current.copy(
+                                // Newer requests can push ones already seen onto the next page
+                                rows = DataLoadingState.Success((rows + page.rows).distinctBy { it.requestId }),
+                                fetched = page.fetched,
+                                hasMore = page.hasMore,
+                                loadingMore = false,
+                            )
+                        }
+                    } catch (ex: CancellationException) {
+                        throw ex
+                    } catch (ex: Exception) {
+                        Timber.e(ex, "Error fetching more downloads")
+                        _state.update { it.copy(loadingMore = false, loadMoreFailed = true) }
+                    }
+                }
+        }
+
+        fun retryLoadMore() {
+            _state.update { it.copy(loadMoreFailed = false) }
+            loadMore()
+        }
+
+        /**
+         * Keep the rows up to date for as long as the caller stays active
+         *
+         * The caller scopes this to the page being visible. Returns if there is nothing to refresh.
+         */
+        suspend fun refreshWhileVisible() {
+            var failures = 0
+            while (true) {
+                val wait = downloadRefreshDelay(failures) - lastRefresh.elapsedNow()
+                if (wait.isPositive()) delay(wait)
+                val success = refreshRows() ?: return
+                failures = if (success) 0 else failures + 1
+                _state.update { it.copy(refreshFailed = failures > 0) }
+            }
+        }
+
+        /**
+         * Refresh the rows which can still change
+         *
+         * @return whether any were refreshed or null if none can change
+         */
+        private suspend fun refreshRows(): Boolean? {
+            val rows = _state.value.rows.successValue.orEmpty().filter { it.refreshing }
+            if (rows.isEmpty()) return null
+            val batch = nextRefreshBatch(rows, refreshStart, MAX_ROWS_PER_REFRESH)
+            refreshStart = (refreshStart + batch.size) % rows.size
+            val updated =
+                withContext(WholphinDispatchers.IO) {
+                    batch
+                        .map { row ->
+                            async {
+                                limiter.withPermit {
+                                    fetchMovie(row.tmdbId)?.let { updateRow(row, it.mediaInfo, it) }
+                                }
+                            }
+                        }.awaitAll()
+                }.filterNotNull().associateBy { it.requestId }
+            lastRefresh = TimeSource.Monotonic.markNow()
+            _state.update { current ->
+                val latest = current.rows.successValue ?: return@update current
+                current.copy(
+                    rows = DataLoadingState.Success(latest.map { updated[it.requestId] ?: it }),
+                )
+            }
+            return updated.isNotEmpty()
+        }
+
+        private suspend fun fetchPage(
+            userId: Int,
+            skip: Int,
+        ): DownloadsResult {
+            val response =
+                seerrService.api.requestApi.requestGet(
+                    take = DOWNLOADS_PAGE_SIZE,
+                    skip = skip,
+                    sort = RequestApi.SortRequestGet.ADDED,
+                    sortDirection = RequestApi.SortDirectionRequestGet.DESC,
+                    requestedBy = userId,
+                    mediaType = RequestApi.MediaTypeRequestGet.MOVIE,
+                )
+            val requests = response.results.orEmpty()
+            val rows =
+                coroutineScope {
+                    requests
+                        .map { request -> async { limiter.withPermit { createRow(request) } } }
+                        .awaitAll()
+                }.filterNotNull()
+            val fetched = skip + requests.size
+            return DownloadsResult(
+                rows = rows,
+                fetched = fetched,
+                hasMore =
+                    hasMoreDownloads(
+                        fetched = fetched,
+                        total = response.pageInfo?.results,
+                        lastPageSize = requests.size,
+                        pageSize = DOWNLOADS_PAGE_SIZE,
+                    ),
+            )
+        }
+
+        private suspend fun createRow(request: MediaRequest): DownloadRow? {
+            val tmdbId = request.media?.tmdbId
+            if (tmdbId == null) {
+                Timber.v("No TMDB ID for request %s", request.id)
+                return null
+            }
+            val movie = fetchMovie(tmdbId)
+            return updateRow(
+                row =
+                    DownloadRow(
+                        requestId = request.id,
+                        tmdbId = tmdbId,
+                        is4k = request.is4k == true,
+                        requestStatus = RequestStatus.from(request.status),
+                    ),
+                // Without the movie the row still gets its state, only the title & poster are missing
+                media = movie?.mediaInfo ?: request.media,
+                movie = movie,
+            )
+        }
+
+        private suspend fun fetchMovie(tmdbId: Int): MovieDetails? =
+            try {
+                seerrService.api.moviesApi.movieMovieIdGet(movieId = tmdbId)
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                Timber.w(ex, "Error fetching movie %s", tmdbId)
+                null
+            }
+
+        /**
+         * @param media the latest media info, null if Seerr no longer has any
+         * @param movie the movie that came from, or null if it could not be fetched
+         */
+        private suspend fun updateRow(
+            row: DownloadRow,
+            media: MediaInfo?,
+            movie: MovieDetails?,
+        ): DownloadRow {
+            val request = media?.requests?.firstOrNull { it.id == row.requestId }
+            val requestRemoved = movie != null && (media == null || (media.requests != null && request == null))
+            val requestExists = row.requestExists && !requestRemoved
+            val requestStatus = request?.let { RequestStatus.from(it.status) } ?: row.requestStatus
+            val queue = if (row.is4k) media?.downloadStatus4k else media?.downloadStatus
+            val seen = seenInQueue(row.seenInQueue, queue)
+            val jellyfinId =
+                (if (row.is4k) media?.jellyfinMediaId4k else media?.jellyfinMediaId)
+                    ?.toUUIDOrNull()
+                    ?.takeIf { isInJellyfin(it) }
+            return row.copy(
+                requestStatus = requestStatus,
+                requestExists = requestExists,
+                item = row.item ?: movie?.let { createItem(it) },
+                jellyfinItemId = jellyfinId,
+                seenInQueue = seen,
+                progress =
+                    downloadProgress(
+                        requestStatus = requestStatus,
+                        requestExists = requestExists,
+                        mediaStatus = SeerrAvailability.from(if (row.is4k) media?.status4k else media?.status),
+                        queue = queue,
+                        inJellyfin = jellyfinId != null,
+                        seenInQueue = seen,
+                        now = Instant.now(),
+                    ),
+            )
+        }
+
+        // Seerr's id can be ahead of Jellyfin or stale, only the user's own lookup proves it's playable
+        private suspend fun isInJellyfin(itemId: UUID): Boolean =
+            try {
+                api.userLibraryApi.getItem(itemId)
+                true
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                Timber.d(ex, "Item %s not in Jellyfin", itemId)
+                false
+            }
+
+        // The poster can't come from Jellyfin here, it may not have the item yet
+        private suspend fun createItem(movie: MovieDetails): DiscoverItem {
+            val item = seerrService.createDiscoverItem(movie)
+            val posterUrl = seerrService.createImageUrl(ImageType.PRIMARY, movie.posterPath, null)
+            return item.copy(posterUrl = posterUrl ?: item.posterUrl)
+        }
+
+        /**
+         * A row that is ready goes to the Jellyfin item, any other to its Discover page
+         */
+        fun open(row: DownloadRow) {
+            val destination =
+                row.jellyfinItemId?.let { Destination.MediaItem(itemId = it, type = BaseItemKind.MOVIE) }
+                    ?: row.item?.let { Destination.DiscoveredItem(it) }
+            destination?.let(navigationManager::navigateTo)
+        }
+    }
+
+/**
+ * The current user's requested movies and how far along each one is
+ */
+@Composable
+fun DownloadsPage(
+    modifier: Modifier = Modifier,
+    viewModel: DownloadsViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsState()
+
+    // Leaving the page or the app cancels this, so nothing is fetched unless it can be seen
+    val refreshing = state.refreshing
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, refreshing) {
+        if (refreshing) {
+            lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                viewModel.refreshWhileVisible()
+            }
+        }
+    }
+
+    when (val rows = state.rows) {
+        DataLoadingState.Pending,
+        DataLoadingState.Loading,
+        -> {
+            LoadingPage(modifier)
+        }
+
+        is DataLoadingState.Error -> {
+            DownloadsMessage(
+                message = stringResource(R.string.downloads_load_error),
+                detail = rows.exception?.localizedMessage,
+                onRetry = viewModel::retry,
+                modifier = modifier,
+            )
+        }
+
+        is DataLoadingState.Success<List<DownloadRow>> -> {
+            if (rows.data.isEmpty()) {
+                DownloadsMessage(
+                    message = stringResource(R.string.downloads_empty),
+                    detail = null,
+                    onRetry = viewModel::retry,
+                    modifier = modifier,
+                )
+            } else {
+                DownloadsList(
+                    rows = rows.data,
+                    state = state,
+                    onClickRow = viewModel::open,
+                    onLoadMore = viewModel::loadMore,
+                    onRetryLoadMore = viewModel::retryLoadMore,
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadsMessage(
+    message: String,
+    detail: String?,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.tryRequestFocus() }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(32.dp),
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        )
+        detail?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+            )
+        }
+        TextButton(
+            stringRes = R.string.retry,
+            onClick = onRetry,
+            modifier = Modifier.focusRequester(focusRequester),
+        )
+    }
+}
+
+@Composable
+private fun DownloadsList(
+    rows: List<DownloadRow>,
+    state: DownloadsState,
+    onClickRow: (DownloadRow) -> Unit,
+    onLoadMore: () -> Unit,
+    onRetryLoadMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var position by rememberInt()
+    val focusedRow = position.coerceIn(rows.indices)
+    val focusRequester = remember { FocusRequester() }
+    // Not saved, so that coming back to the page focuses the row it was left on
+    var focusRestored by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(position, rows.size) {
+        if (position >= rows.size - ROWS_LOADED_AHEAD) onLoadMore.invoke()
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        GridTitle(
+            title = stringResource(R.string.downloads_title),
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        if (state.refreshFailed) {
+            Text(
+                text = stringResource(R.string.downloads_refresh_error),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        LazyColumn(
+            state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 40.dp),
+            modifier =
+                Modifier
+                    .focusRestorer()
+                    .weight(1f)
+                    .fillMaxWidth(),
+        ) {
+            itemsIndexed(rows, key = { _, row -> row.requestId }) { index, row ->
+                val restoreFocus = index == focusedRow && !focusRestored
+                if (restoreFocus) {
+                    LaunchedEffect(Unit) { focusRestored = focusRequester.tryRequestFocus("downloads") }
+                }
+                DownloadRowCard(
+                    row = row,
+                    onClick = { onClickRow.invoke(row) },
+                    modifier =
+                        Modifier
+                            .ifElse(restoreFocus, Modifier.focusRequester(focusRequester))
+                            .onFocusChanged { if (it.hasFocus) position = index },
+                )
+            }
+            if (state.loadingMore) {
+                item(key = "loading") {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                        CircularProgress(Modifier.size(32.dp))
+                    }
+                }
+            }
+            if (state.loadMoreFailed) {
+                item(key = "retry") {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(stringRes = R.string.retry, onClick = onRetryLoadMore)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadRowCard(
+    row: DownloadRow,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val progress = row.progress
+    val title = row.item?.title ?: stringResource(R.string.unknown)
+    Surface(
+        onClick = onClick,
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(8.dp)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        colors =
+            ClickableSurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                focusedContainerColor = MaterialTheme.colorScheme.onSurface,
+                focusedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                pressedContainerColor = MaterialTheme.colorScheme.onSurface,
+                pressedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(ROW_HEIGHT),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+        ) {
+            ItemCardImage(
+                imageUrl = row.item?.posterUrl,
+                name = title,
+                showOverlay = false,
+                favorite = false,
+                watched = false,
+                unwatchedCount = 0,
+                watchedPercent = null,
+                numberOfVersions = -1,
+                useFallbackText = false,
+                contentScale = ContentScale.FillBounds,
+                modifier =
+                    Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(AspectRatios.TALL),
+            )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                row.item?.releaseDate?.year?.let {
+                    Text(
+                        text = it.toString(),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text(
+                    text = stringResource(progress.state.stringRes),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                progress.fraction?.let { DownloadProgressBar(it) }
+                DownloadProgressText(progress)
+            }
+            if (progress.state == DownloadState.READY) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(end = 16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                    )
+                    Text(
+                        text = stringResource(R.string.play),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadProgressBar(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+) {
+    val color = LocalContentColor.current
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color.copy(alpha = 0.25f)),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth(fraction)
+                    .fillMaxHeight()
+                    .background(color),
+        )
+    }
+}
+
+@Composable
+private fun DownloadProgressText(
+    progress: DownloadProgress,
+    modifier: Modifier = Modifier,
+) {
+    val percent =
+        progress.fraction?.let {
+            stringResource(R.string.download_percent, downloadPercent(it))
+        }
+    val timeLeft =
+        progress.timeLeft?.let {
+            stringResource(R.string.download_time_left, LocalResources.current.formatDuration(it))
+        }
+    val text = listOfNotNull(percent, timeLeft).joinToString("  •  ")
+    if (text.isNotEmpty()) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = modifier,
+        )
+    }
+}
+
+@get:StringRes
+private val DownloadState.stringRes: Int
+    get() =
+        when (this) {
+            DownloadState.PENDING_APPROVAL -> R.string.download_state_pending
+            DownloadState.SEARCHING -> R.string.download_state_searching
+            DownloadState.QUEUED -> R.string.download_state_queued
+            DownloadState.DOWNLOADING -> R.string.download_state_downloading
+            DownloadState.PREPARING -> R.string.download_state_preparing
+            DownloadState.READY -> R.string.download_state_ready
+            DownloadState.FAILED -> R.string.download_state_failed
+            DownloadState.DECLINED -> R.string.download_state_declined
+            DownloadState.UNAVAILABLE -> R.string.download_state_unavailable
+        }

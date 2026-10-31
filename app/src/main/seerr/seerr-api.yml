@@ -1327,6 +1327,48 @@ components:
           type: string
         jellyfinMediaId4k:
           type: string
+        status4k:
+          type: integer
+          example: 0
+          description: Availability of the 4K media, same values as `status`
+        downloadStatus:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/DownloadingItem'
+        downloadStatus4k:
+          type: array
+          readOnly: true
+          items:
+            $ref: '#/components/schemas/DownloadingItem'
+    DownloadingItem:
+      type: object
+      properties:
+        externalId:
+          type: integer
+          nullable: true
+        size:
+          type: number
+          format: double
+        sizeLeft:
+          type: number
+          format: double
+        status:
+          type: string
+        timeLeft:
+          type: string
+          nullable: true
+          description: Absent when the download client has no estimate, otherwise [d.]hh:mm:ss[.fffffff]
+        estimatedCompletionTime:
+          type: string
+          nullable: true
+          description: The server sends null when it has no valid date
+        title:
+          type: string
+          nullable: true
+        downloadId:
+          type: string
+          nullable: true
     Cast:
       type: object
       properties:

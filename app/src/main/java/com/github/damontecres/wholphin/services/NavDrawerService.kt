@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.services
 
 import android.content.Context
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.ServerPreferencesDao
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.JellyfinUser
@@ -196,6 +197,7 @@ class NavDrawerService
                 buildList {
                     add(NavDrawerItem.Favorites)
                     if (discoverActive) add(NavDrawerItem.Discover)
+                    if (discoverActive && BuildConfig.DOWNLOADS_PAGE_ENABLED) add(NavDrawerItem.Downloads)
                 }
             val allLibraries = getAllUserLibraries(user.id, userDto.tvAccess)
             val libraries =

@@ -138,6 +138,13 @@ class NavDrawerViewModel
                     )
                 }
 
+                NavDrawerItem.Downloads -> {
+                    setIndex(index)
+                    navigationManager.navigateToFromDrawer(
+                        Destination.Downloads,
+                    )
+                }
+
                 is ServerNavDrawerItem -> {
                     setIndex(index)
                     navigationManager.navigateToFromDrawer(item.destination)
@@ -169,6 +176,7 @@ class NavDrawerViewModel
                             is ServerNavDrawerItem -> it.destination
                             is NavDrawerItem.Favorites -> Destination.Favorites
                             is NavDrawerItem.Discover -> Destination.Discover
+                            is NavDrawerItem.Downloads -> Destination.Downloads
                             else -> null
                         }
                     }
@@ -242,6 +250,13 @@ sealed interface NavDrawerItem {
             get() = "a_discover"
 
         override fun name(context: Context): String = context.getString(R.string.discover)
+    }
+
+    object Downloads : NavDrawerItem {
+        override val id: String
+            get() = "a_downloads"
+
+        override fun name(context: Context): String = context.getString(R.string.downloads_title)
     }
 }
 
@@ -672,6 +687,10 @@ fun NavigationDrawerScope.NavItem(
 
                 NavDrawerItem.Discover -> {
                     R.string.fa_magnifying_glass_plus
+                }
+
+                NavDrawerItem.Downloads -> {
+                    R.string.fa_download
                 }
 
                 is ServerNavDrawerItem -> {
