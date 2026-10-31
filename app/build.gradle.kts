@@ -162,6 +162,8 @@ configure<ApplicationExtension> {
         val featureUpdate = "UPDATING_ENABLED"
         val featureDiscover = "DISCOVER_ENABLED"
         val featureTvChannels = "TV_CHANNELS_ENABLED"
+        val featureExternalPlayer = "EXTERNAL_PLAYER_ENABLED"
+        val featureRemoteTrailers = "REMOTE_TRAILERS_ENABLED"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
 
@@ -188,6 +190,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpdate, true)
             setFeatureFlag(featureDiscover, true)
             setFeatureFlag(featureTvChannels, true)
+            setFeatureFlag(featureExternalPlayer, true)
+            setFeatureFlag(featureRemoteTrailers, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("appstore") {
@@ -196,6 +200,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpdate, false)
             setFeatureFlag(featureDiscover, true)
             setFeatureFlag(featureTvChannels, true)
+            setFeatureFlag(featureExternalPlayer, true)
+            setFeatureFlag(featureRemoteTrailers, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("firetv") {
@@ -204,6 +210,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpdate, false)
             setFeatureFlag(featureDiscover, false)
             setFeatureFlag(featureTvChannels, true)
+            setFeatureFlag(featureExternalPlayer, true)
+            setFeatureFlag(featureRemoteTrailers, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("ourflix") {
@@ -215,6 +223,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpdate, false)
             setFeatureFlag(featureDiscover, true)
             setFeatureFlag(featureTvChannels, false)
+            setFeatureFlag(featureExternalPlayer, false)
+            setFeatureFlag(featureRemoteTrailers, false)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // Build type signing configs win over this, so debug keeps the debug key
             signingConfig = signingConfigs.findByName("ourflix")

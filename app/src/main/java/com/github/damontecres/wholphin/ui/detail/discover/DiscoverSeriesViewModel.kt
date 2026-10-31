@@ -20,6 +20,7 @@ import com.github.damontecres.wholphin.services.BackdropService
 import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.SeerrServerRepository
 import com.github.damontecres.wholphin.services.SeerrService
+import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
@@ -152,7 +153,7 @@ class DiscoverSeriesViewModel
                             ?.map {
                                 RemoteTrailer(it.name!!, it.url!!, it.site)
                             }.orEmpty()
-                    _state.update { it.copy(trailers = trailers) }
+                    _state.update { it.copy(trailers = TrailerService.offered(trailers)) }
                 } catch (ex: CancellationException) {
                     throw ex
                 } catch (ex: Exception) {

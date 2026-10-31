@@ -31,6 +31,7 @@ import com.github.damontecres.wholphin.preferences.AssPlaybackMode
 import com.github.damontecres.wholphin.preferences.MediaExtensionStatus
 import com.github.damontecres.wholphin.preferences.PlayerBackend
 import com.github.damontecres.wholphin.preferences.get
+import com.github.damontecres.wholphin.preferences.normalized
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
 import com.github.damontecres.wholphin.util.BitstreamFilteringCodecAdapterFactory
 import com.github.damontecres.wholphin.util.Hdr10PlusMaskingFilter
@@ -75,7 +76,7 @@ class PlayerFactory
             }
             var assHandler: AssHandler? = null
             val newPlayer =
-                when (backend) {
+                when (backend.normalized()) {
                     PlayerBackend.PREFER_MPV,
                     PlayerBackend.MPV,
                     -> {

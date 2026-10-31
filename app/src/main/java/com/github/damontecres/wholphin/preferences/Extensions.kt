@@ -9,6 +9,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.ui.ifElse
 import com.github.damontecres.wholphin.ui.playback.isDown
 import com.github.damontecres.wholphin.ui.playback.isUp
@@ -24,6 +25,17 @@ val PlaybackPreferences.skipBackOnResume: Duration?
         } else {
             null
         }
+
+/**
+ * The backend to actually use: [PlayerBackend.EXTERNAL_PLAYER] falls back to [PlayerBackend.EXO_PLAYER]
+ * when external players are disabled, even if it was stored or requested
+ */
+fun PlayerBackend.normalized(externalPlayerEnabled: Boolean = BuildConfig.EXTERNAL_PLAYER_ENABLED): PlayerBackend =
+    if (this == PlayerBackend.EXTERNAL_PLAYER && !externalPlayerEnabled) {
+        PlayerBackend.EXO_PLAYER
+    } else {
+        this
+    }
 
 /**
  * Adds modifiers so that pressing Up on the first element scrolls to the bottom and vice versa

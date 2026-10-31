@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.Trailer
+import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.ui.components.ExpandableFaButton
 import com.github.damontecres.wholphin.ui.components.ExpandablePlayButton
 import com.github.damontecres.wholphin.ui.components.TrailerButton
@@ -166,7 +167,7 @@ fun ExpandableDiscoverButtons(
             }
         }
 
-        if (trailers != null) {
+        if (trailers != null && TrailerService.showButton(trailers)) {
             item("trailers") {
                 TrailerButton(
                     trailers = trailers,

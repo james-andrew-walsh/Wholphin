@@ -886,7 +886,7 @@ sealed interface AppPreference<Pref, T> {
             AppChoicePreference<AppPreferences, PlayerBackend>(
                 title = R.string.player_backend,
                 defaultValue = PlayerBackend.EXO_PLAYER,
-                getter = { it.playbackPreferences.playerBackend },
+                getter = { it.playbackPreferences.playerBackend.normalized() },
                 setter = { prefs, value ->
                     prefs.updatePlaybackPreferences { playerBackend = value }
                 },
@@ -894,6 +894,8 @@ sealed interface AppPreference<Pref, T> {
                 subtitles = R.array.player_backend_options_subtitles,
                 indexToValue = { PlayerBackend.forNumber(it) ?: PlayerBackend.EXO_PLAYER },
                 valueToIndex = { if (it != PlayerBackend.UNRECOGNIZED) it.number else PlayerBackend.EXO_PLAYER.number },
+                // External player is the last option, so the other indexes are unaffected
+                choiceLimit = if (BuildConfig.EXTERNAL_PLAYER_ENABLED) Int.MAX_VALUE else PlayerBackend.EXTERNAL_PLAYER.number,
             )
 
         val ExternalPlayerApp =
@@ -1270,7 +1272,7 @@ val advancedPreferences =
                 conditionalPreferences =
                     listOf(
                         ConditionalPreferences(
-                            { it.playbackPreferences.playerBackend == PlayerBackend.EXO_PLAYER },
+                            { it.playbackPreferences.playerBackend.normalized() == PlayerBackend.EXO_PLAYER },
                             ExoPlayerSettings,
                         ),
                         ConditionalPreferences(
@@ -1285,7 +1287,7 @@ val advancedPreferences =
                             ),
                         ),
                         ConditionalPreferences(
-                            { it.playbackPreferences.playerBackend == PlayerBackend.EXTERNAL_PLAYER },
+                            { it.playbackPreferences.playerBackend.normalized() == PlayerBackend.EXTERNAL_PLAYER },
                             listOf(AppPreference.ExternalPlayerApp),
                         ),
                     ),
@@ -1411,6 +1413,7 @@ data class AppChoicePreference<Pref, T>(
     override val setter: (prefs: Pref, value: T) -> Pref,
     @param:StringRes val summary: Int? = null,
     @param:ArrayRes val subtitles: Int? = null,
+    val choiceLimit: Int = Int.MAX_VALUE,
 ) : AppPreference<Pref, T>
 
 data class AppMultiChoicePreference<Pref, T>(

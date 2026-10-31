@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ChosenStreams
 import com.github.damontecres.wholphin.data.model.AudioItem
@@ -649,8 +650,9 @@ private fun buildContextMenuItems(
         }
     }
 
-private fun buildPlayWith(
+internal fun buildPlayWith(
     resources: Resources,
+    externalPlayerEnabled: Boolean = BuildConfig.EXTERNAL_PLAYER_ENABLED,
     onClick: (Boolean, PlayerBackend?) -> Unit,
 ) = buildList {
     val entries =
@@ -658,6 +660,7 @@ private fun buildPlayWith(
             .filterNot { it == PlayerBackend.UNRECOGNIZED }
             .zip(resources.getStringArray(R.array.player_backend_options))
             .filterNot { it.first == PlayerBackend.PREFER_MPV }
+            .filterNot { !externalPlayerEnabled && it.first == PlayerBackend.EXTERNAL_PLAYER }
     entries.forEach { (backend, title) ->
         add(
             DialogItem(

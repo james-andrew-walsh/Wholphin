@@ -167,7 +167,7 @@ fun <T> ComposablePreference(
         }
 
         is AppChoicePreference -> {
-            val values = stringArrayResource(preference.displayValues).toList()
+            val values = stringArrayResource(preference.displayValues).take(preference.choiceLimit)
             val subtitles =
                 preference.subtitles?.let { stringArrayResource(preference.subtitles).toList() }
             val summary =

@@ -3,6 +3,7 @@ package com.github.damontecres.wholphin.services
 import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.LocalTrailer
@@ -59,7 +60,7 @@ class TrailerService
                             it.name
                         },
                     ),
-                )
+                ).let { offered(it) }
 
         suspend fun getLocalTrailers(item: BaseItem): List<Trailer> {
             val localTrailerCount = item.data.localTrailerCount ?: return emptyList()
@@ -76,6 +77,23 @@ class TrailerService
 
         companion object {
             /**
+             * The [trailers] to offer. Remote trailers open another app, so they are removed when disabled.
+             */
+            fun offered(
+                trailers: List<Trailer>,
+                remoteTrailersEnabled: Boolean = BuildConfig.REMOTE_TRAILERS_ENABLED,
+            ): List<Trailer> = if (remoteTrailersEnabled) trailers else trailers.filterNot { it is RemoteTrailer }
+
+            /**
+             * Whether to show the trailer button. With no [trailers] it normally shows as disabled,
+             * but it is hidden instead when remote trailers are disabled.
+             */
+            fun showButton(
+                trailers: List<Trailer>,
+                remoteTrailersEnabled: Boolean = BuildConfig.REMOTE_TRAILERS_ENABLED,
+            ): Boolean = remoteTrailersEnabled || trailers.isNotEmpty()
+
+            /**
              * Note: This is explicitly <b>not</b> a member function because the injected Context is not an Activity.
              * We want to start the intent without a new task which requires the Activity context
              *
@@ -85,6 +103,7 @@ class TrailerService
                 context: Context,
                 trailer: Trailer,
                 navigateTo: (Destination) -> Unit,
+                remoteTrailersEnabled: Boolean = BuildConfig.REMOTE_TRAILERS_ENABLED,
             ) {
                 when (trailer) {
                     is LocalTrailer -> {
@@ -97,8 +116,10 @@ class TrailerService
                     }
 
                     is RemoteTrailer -> {
-                        val intent = Intent(Intent.ACTION_VIEW, trailer.url.toUri())
-                        context.startActivity(intent)
+                        if (remoteTrailersEnabled) {
+                            val intent = Intent(Intent.ACTION_VIEW, trailer.url.toUri())
+                            context.startActivity(intent)
+                        }
                     }
                 }
             }

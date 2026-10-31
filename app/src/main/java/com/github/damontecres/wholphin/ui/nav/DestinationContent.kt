@@ -10,6 +10,7 @@ import com.github.damontecres.wholphin.data.filter.DefaultForStudiosFilterOption
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.preferences.PlayerBackend
 import com.github.damontecres.wholphin.preferences.UserPreferences
+import com.github.damontecres.wholphin.preferences.normalized
 import com.github.damontecres.wholphin.ui.components.ItemGrid
 import com.github.damontecres.wholphin.ui.components.LicenseInfo
 import com.github.damontecres.wholphin.ui.data.MovieSortOptions
@@ -83,7 +84,7 @@ fun DestinationContent(
         is Destination.Playback -> {
             val backend =
                 destination.backend ?: preferences.appPreferences.playbackPreferences.playerBackend
-            if (backend == PlayerBackend.EXTERNAL_PLAYER) {
+            if (backend.normalized() == PlayerBackend.EXTERNAL_PLAYER) {
                 PlayExternalPage(
                     preferences = preferences,
                     destination = destination,
@@ -99,7 +100,7 @@ fun DestinationContent(
         }
 
         is Destination.PlaybackList -> {
-            if (preferences.appPreferences.playbackPreferences.playerBackend == PlayerBackend.EXTERNAL_PLAYER) {
+            if (preferences.appPreferences.playbackPreferences.playerBackend.normalized() == PlayerBackend.EXTERNAL_PLAYER) {
                 PlayExternalPage(
                     preferences = preferences,
                     destination = destination,

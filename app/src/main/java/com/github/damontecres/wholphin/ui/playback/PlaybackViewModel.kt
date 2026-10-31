@@ -42,6 +42,7 @@ import com.github.damontecres.wholphin.preferences.ShowNextUpWhen
 import com.github.damontecres.wholphin.preferences.SkipSegmentBehavior
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.preferences.enabled
+import com.github.damontecres.wholphin.preferences.normalized
 import com.github.damontecres.wholphin.services.DatePlayedService
 import com.github.damontecres.wholphin.services.DeviceProfileService
 import com.github.damontecres.wholphin.services.ImageUrlService
@@ -240,7 +241,7 @@ class PlaybackViewModel
                 (destination as? Destination.Playback)?.backend
                     ?: preferences.appPreferences.playbackPreferences.playerBackend
             val playerBackend =
-                when (requestBackend) {
+                when (requestBackend.normalized()) {
                     PlayerBackend.UNRECOGNIZED,
                     PlayerBackend.EXO_PLAYER,
                     -> PlayerBackend.EXO_PLAYER
