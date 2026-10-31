@@ -22,9 +22,12 @@ class BuildPlayWithTest {
     /**
      * Click on every item to find out what it would start
      */
-    private fun clickAll(externalPlayerEnabled: Boolean): List<Pair<Boolean, PlayerBackend?>> {
+    private fun clickAll(
+        externalPlayerEnabled: Boolean,
+        mpvEnabled: Boolean,
+    ): List<Pair<Boolean, PlayerBackend?>> {
         val clicked = mutableListOf<Pair<Boolean, PlayerBackend?>>()
-        buildPlayWith(mockResources, externalPlayerEnabled) { transcode, backend ->
+        buildPlayWith(mockResources, externalPlayerEnabled, mpvEnabled) { transcode, backend ->
             clicked.add(transcode to backend)
         }.forEach { it.onClick.invoke() }
         return clicked
@@ -39,7 +42,7 @@ class BuildPlayWithTest {
                 false to PlayerBackend.EXTERNAL_PLAYER,
                 true to null,
             ),
-            clickAll(externalPlayerEnabled = true),
+            clickAll(externalPlayerEnabled = true, mpvEnabled = true),
         )
     }
 
@@ -51,7 +54,30 @@ class BuildPlayWithTest {
                 false to PlayerBackend.MPV,
                 true to null,
             ),
-            clickAll(externalPlayerEnabled = false),
+            clickAll(externalPlayerEnabled = false, mpvEnabled = true),
+        )
+    }
+
+    @Test
+    fun `MPV is omitted when disabled`() {
+        Assert.assertEquals(
+            listOf(
+                false to PlayerBackend.EXO_PLAYER,
+                false to PlayerBackend.EXTERNAL_PLAYER,
+                true to null,
+            ),
+            clickAll(externalPlayerEnabled = true, mpvEnabled = false),
+        )
+    }
+
+    @Test
+    fun `Only ExoPlayer and transcoding remain when both are disabled`() {
+        Assert.assertEquals(
+            listOf(
+                false to PlayerBackend.EXO_PLAYER,
+                true to null,
+            ),
+            clickAll(externalPlayerEnabled = false, mpvEnabled = false),
         )
     }
 }

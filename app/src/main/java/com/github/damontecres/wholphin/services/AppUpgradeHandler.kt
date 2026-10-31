@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.core.content.edit
 import androidx.datastore.core.DataStore
 import androidx.preference.PreferenceManager
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.JellyfinServerDao
 import com.github.damontecres.wholphin.data.RememberedTabDao
 import com.github.damontecres.wholphin.data.SeerrServerDao
@@ -83,6 +84,7 @@ class AppUpgradeHandler
             val prefs = PreferenceManager.getDefaultSharedPreferences(context)
             val previousVersion = prefs.getString(VERSION_NAME_CURRENT_KEY, null)
             val previousVersionCode = prefs.getLong(VERSION_CODE_CURRENT_KEY, -1)
+            val previousBaseline = prefs.getString(UPGRADE_BASELINE_KEY, null)
 
             val newVersion = pkgInfo.versionName!!
             val newVersionCode =
@@ -97,11 +99,16 @@ class AppUpgradeHandler
                 putLong(VERSION_CODE_PREVIOUS_KEY, previousVersionCode)
                 putString(VERSION_NAME_CURRENT_KEY, newVersion)
                 putLong(VERSION_CODE_CURRENT_KEY, newVersionCode)
+                putString(UPGRADE_BASELINE_KEY, BuildConfig.UPGRADE_BASELINE_VERSION)
             }
             try {
                 copySubfont(true)
                 upgradeApp(
-                    Version.fromString(previousVersion ?: "0.0.0"),
+                    upgradeStartVersion(
+                        previousVersion,
+                        previousBaseline,
+                        BuildConfig.UPGRADE_BASELINE_VERSION,
+                    ),
                     Version.fromString(newVersion),
                     appPreferences,
                 )
@@ -140,6 +147,26 @@ class AppUpgradeHandler
             const val VERSION_CODE_PREVIOUS_KEY = "version.previous.code"
             const val VERSION_NAME_CURRENT_KEY = "version.current.name"
             const val VERSION_CODE_CURRENT_KEY = "version.current.code"
+            const val UPGRADE_BASELINE_KEY = "version.upgrade.baseline"
+
+            /**
+             * The version to run [upgradeApp] from. A flavor with its own version numbers can't
+             * compare them to the upstream versions in [upgradeApp], so it tracks the upstream
+             * release it's merged with: [baseline] for this build and [previousBaseline] for the
+             * build it replaces. A blank [baseline] means the app uses upstream's version numbers.
+             */
+            internal fun upgradeStartVersion(
+                previousVersion: String?,
+                previousBaseline: String?,
+                baseline: String,
+            ): Version =
+                Version.fromString(
+                    when {
+                        previousVersion == null -> "0.0.0"
+                        baseline.isBlank() -> previousVersion
+                        else -> previousBaseline ?: baseline
+                    },
+                )
         }
 
         /**

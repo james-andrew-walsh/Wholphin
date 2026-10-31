@@ -653,6 +653,7 @@ private fun buildContextMenuItems(
 internal fun buildPlayWith(
     resources: Resources,
     externalPlayerEnabled: Boolean = BuildConfig.EXTERNAL_PLAYER_ENABLED,
+    mpvEnabled: Boolean = BuildConfig.MPV_ENABLED,
     onClick: (Boolean, PlayerBackend?) -> Unit,
 ) = buildList {
     val entries =
@@ -661,6 +662,7 @@ internal fun buildPlayWith(
             .zip(resources.getStringArray(R.array.player_backend_options))
             .filterNot { it.first == PlayerBackend.PREFER_MPV }
             .filterNot { !externalPlayerEnabled && it.first == PlayerBackend.EXTERNAL_PLAYER }
+            .filterNot { !mpvEnabled && it.first == PlayerBackend.MPV }
     entries.forEach { (backend, title) ->
         add(
             DialogItem(

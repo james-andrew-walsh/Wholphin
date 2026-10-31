@@ -163,6 +163,8 @@ configure<ApplicationExtension> {
         val featureDiscover = "DISCOVER_ENABLED"
         val featureTvChannels = "TV_CHANNELS_ENABLED"
         val featureExternalPlayer = "EXTERNAL_PLAYER_ENABLED"
+        val featureMpv = "MPV_ENABLED"
+        val featureAv1Decoder = "AV1_DECODER_ENABLED"
         val featureRemoteTrailers = "REMOTE_TRAILERS_ENABLED"
         val featureUpstreamNetwork = "UPSTREAM_NETWORK_ENABLED"
         val featureSeerrApiKeyAuth = "SEERR_API_KEY_AUTH_ENABLED"
@@ -185,6 +187,10 @@ configure<ApplicationExtension> {
             this.buildConfigField("String", "DEEP_LINK_SCHEME", "\"${scheme}\"")
             this.buildConfigField("String", "ACTION_PLAYBACK", "\"${playbackAction}\"")
         }
+
+        fun ProductFlavor.setUpgradeBaseline(version: String) {
+            this.buildConfigField("String", "UPGRADE_BASELINE_VERSION", "\"${version}\"")
+        }
         create("default") {
             dimension = "version"
             isDefault = true
@@ -193,10 +199,13 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDiscover, true)
             setFeatureFlag(featureTvChannels, true)
             setFeatureFlag(featureExternalPlayer, true)
+            setFeatureFlag(featureMpv, true)
+            setFeatureFlag(featureAv1Decoder, true)
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
+            setUpgradeBaseline("")
         }
         create("appstore") {
             dimension = "version"
@@ -205,10 +214,13 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDiscover, true)
             setFeatureFlag(featureTvChannels, true)
             setFeatureFlag(featureExternalPlayer, true)
+            setFeatureFlag(featureMpv, true)
+            setFeatureFlag(featureAv1Decoder, true)
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
+            setUpgradeBaseline("")
         }
         create("firetv") {
             dimension = "version"
@@ -217,10 +229,13 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDiscover, false)
             setFeatureFlag(featureTvChannels, true)
             setFeatureFlag(featureExternalPlayer, true)
+            setFeatureFlag(featureMpv, true)
+            setFeatureFlag(featureAv1Decoder, true)
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
+            setUpgradeBaseline("")
         }
         create("ourflix") {
             dimension = "version"
@@ -232,10 +247,14 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDiscover, true)
             setFeatureFlag(featureTvChannels, false)
             setFeatureFlag(featureExternalPlayer, false)
+            setFeatureFlag(featureMpv, false)
+            setFeatureFlag(featureAv1Decoder, false)
             setFeatureFlag(featureRemoteTrailers, false)
             setFeatureFlag(featureUpstreamNetwork, false)
             setFeatureFlag(featureSeerrApiKeyAuth, false)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
+            // The upstream release this is merged with, raise it with each upstream merge
+            setUpgradeBaseline("1.0.9")
             // Build type signing configs win over this, so debug keeps the debug key
             signingConfig = signingConfigs.findByName("ourflix")
         }

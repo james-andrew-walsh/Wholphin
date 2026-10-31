@@ -5,6 +5,7 @@ import com.github.damontecres.wholphin.preferences.AppPreferences
 import com.github.damontecres.wholphin.preferences.AssPlaybackMode
 import com.github.damontecres.wholphin.preferences.ExperimentalPreferences
 import com.github.damontecres.wholphin.preferences.PlaybackOverrides
+import com.github.damontecres.wholphin.preferences.av1DecodingEnabled
 import com.github.damontecres.wholphin.preferences.enabled
 import com.github.damontecres.wholphin.util.WholphinDispatchers
 import com.github.damontecres.wholphin.util.profile.MediaCodecCapabilitiesTest
@@ -62,7 +63,7 @@ class DeviceProfileService
                                 assDirectPlay = newConfig.overrides.assPlaybackMode != AssPlaybackMode.ASS_TRANSCODE,
                                 pgsDirectPlay = newConfig.overrides.directPlayPgs,
                                 dolbyVisionELDirectPlay = newConfig.overrides.directPlayDolbyVisionEL,
-                                decodeAv1 = prefs.overrides.decodeAv1,
+                                decodeAv1 = prefs.overrides.av1DecodingEnabled(),
                                 preferAc3ForSurround = appPrefs.experimentalPreferences.enabled { preferAc3Surround },
                                 jellyfinTenEleven = newConfig.jellyfinTenEleven,
                                 maxResolution = newConfig.overrides.maxResolution,

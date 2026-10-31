@@ -894,8 +894,13 @@ sealed interface AppPreference<Pref, T> {
                 subtitles = R.array.player_backend_options_subtitles,
                 indexToValue = { PlayerBackend.forNumber(it) ?: PlayerBackend.EXO_PLAYER },
                 valueToIndex = { if (it != PlayerBackend.UNRECOGNIZED) it.number else PlayerBackend.EXO_PLAYER.number },
-                // External player is the last option, so the other indexes are unaffected
-                choiceLimit = if (BuildConfig.EXTERNAL_PLAYER_ENABLED) Int.MAX_VALUE else PlayerBackend.EXTERNAL_PLAYER.number,
+                // ExoPlayer, MPV, Prefer MPV, External player, so limiting keeps the other indexes
+                choiceLimit =
+                    when {
+                        !BuildConfig.MPV_ENABLED -> PlayerBackend.MPV.number
+                        !BuildConfig.EXTERNAL_PLAYER_ENABLED -> PlayerBackend.EXTERNAL_PLAYER.number
+                        else -> Int.MAX_VALUE
+                    },
             )
 
         val ExternalPlayerApp =
@@ -1187,7 +1192,7 @@ private val ExoPlayerSettings =
         AppPreference.DirectPlayPgs,
         AppPreference.DirectPlayDoviProfile7,
         AppPreference.DecodeAv1,
-    )
+    ).filterNot { it == AppPreference.DecodeAv1 && !BuildConfig.AV1_DECODER_ENABLED }
 
 val ExoPlayerPreferences =
     listOf(
@@ -1276,11 +1281,11 @@ val advancedPreferences =
                             ExoPlayerSettings,
                         ),
                         ConditionalPreferences(
-                            { it.playbackPreferences.playerBackend == PlayerBackend.MPV },
+                            { it.playbackPreferences.playerBackend.normalized() == PlayerBackend.MPV },
                             MpvSettings,
                         ),
                         ConditionalPreferences(
-                            { it.playbackPreferences.playerBackend == PlayerBackend.PREFER_MPV },
+                            { it.playbackPreferences.playerBackend.normalized() == PlayerBackend.PREFER_MPV },
                             listOf(
                                 AppPreference.ExoPlayerSettings,
                                 AppPreference.MpvSettings,

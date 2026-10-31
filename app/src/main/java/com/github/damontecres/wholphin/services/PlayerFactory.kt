@@ -30,6 +30,7 @@ import com.github.damontecres.wholphin.preferences.AppPreferences
 import com.github.damontecres.wholphin.preferences.AssPlaybackMode
 import com.github.damontecres.wholphin.preferences.MediaExtensionStatus
 import com.github.damontecres.wholphin.preferences.PlayerBackend
+import com.github.damontecres.wholphin.preferences.av1DecodingEnabled
 import com.github.damontecres.wholphin.preferences.get
 import com.github.damontecres.wholphin.preferences.normalized
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
@@ -91,7 +92,7 @@ class PlayerFactory
                         val extensions = prefs.overrides.mediaExtensionsEnabled
                         val useLibAss =
                             prefs.overrides.assPlaybackMode == AssPlaybackMode.ASS_LIBASS
-                        val decodeAv1 = prefs.overrides.decodeAv1
+                        val decodeAv1 = prefs.overrides.av1DecodingEnabled()
                         val preferDolbyVision =
                             appPreferences.experimentalPreferences
                                 .get { preferDolbyVisionOverHdr10Plus } ?: false

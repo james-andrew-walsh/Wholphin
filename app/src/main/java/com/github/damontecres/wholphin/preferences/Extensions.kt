@@ -27,15 +27,25 @@ val PlaybackPreferences.skipBackOnResume: Duration?
         }
 
 /**
- * The backend to actually use: [PlayerBackend.EXTERNAL_PLAYER] falls back to [PlayerBackend.EXO_PLAYER]
- * when external players are disabled, even if it was stored or requested
+ * The backend to actually use: [PlayerBackend.EXTERNAL_PLAYER], [PlayerBackend.MPV] and
+ * [PlayerBackend.PREFER_MPV] fall back to [PlayerBackend.EXO_PLAYER] when they are disabled, even if
+ * they were stored or requested
  */
-fun PlayerBackend.normalized(externalPlayerEnabled: Boolean = BuildConfig.EXTERNAL_PLAYER_ENABLED): PlayerBackend =
-    if (this == PlayerBackend.EXTERNAL_PLAYER && !externalPlayerEnabled) {
-        PlayerBackend.EXO_PLAYER
-    } else {
-        this
+fun PlayerBackend.normalized(
+    externalPlayerEnabled: Boolean = BuildConfig.EXTERNAL_PLAYER_ENABLED,
+    mpvEnabled: Boolean = BuildConfig.MPV_ENABLED,
+): PlayerBackend =
+    when {
+        this == PlayerBackend.EXTERNAL_PLAYER && !externalPlayerEnabled -> PlayerBackend.EXO_PLAYER
+        (this == PlayerBackend.MPV || this == PlayerBackend.PREFER_MPV) && !mpvEnabled -> PlayerBackend.EXO_PLAYER
+        else -> this
     }
+
+/**
+ * Whether to use AV1 software decoding, which needs the extension to be part of the build
+ */
+fun PlaybackOverrides.av1DecodingEnabled(av1DecoderEnabled: Boolean = BuildConfig.AV1_DECODER_ENABLED): Boolean =
+    av1DecoderEnabled && decodeAv1
 
 /**
  * Adds modifiers so that pressing Up on the first element scrolls to the bottom and vice versa
