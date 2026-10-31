@@ -146,6 +146,46 @@ class DownloadStateTest {
     }
 
     @Test
+    fun `a download leaving the queue of deleted media is being prepared`() {
+        // Seerr keeps it deleted until a scan finds the import
+        listOf(RequestStatus.APPROVED, RequestStatus.COMPLETED).forEach {
+            listOf(null, emptyList<DownloadingItem>()).forEach { queue ->
+                val status =
+                    progress(
+                        requestStatus = it,
+                        mediaStatus = SeerrAvailability.DELETED,
+                        queue = queue,
+                        seenInQueue = true,
+                    )
+                assertEquals(it.toString(), DownloadState.PREPARING, status.state)
+                assertTrue(keepsRefreshing(status.state, it))
+            }
+        }
+    }
+
+    @Test
+    fun `a failed download of deleted media isn't final on an approved request`() {
+        val status =
+            progress(
+                requestStatus = RequestStatus.APPROVED,
+                mediaStatus = SeerrAvailability.DELETED,
+                queue = listOf(queued("failed")),
+            )
+        assertEquals(DownloadState.FAILED, status.state)
+        assertTrue(keepsRefreshing(status.state, RequestStatus.APPROVED))
+    }
+
+    @Test
+    fun `deleted media on an approved request without a download stays unavailable`() {
+        val status =
+            progress(
+                requestStatus = RequestStatus.APPROVED,
+                mediaStatus = SeerrAvailability.DELETED,
+            )
+        assertEquals(DownloadState.UNAVAILABLE, status.state)
+    }
+
+    @Test
     fun `blocklisted media ignores the queue`() {
         assertEquals(
             DownloadState.UNAVAILABLE,

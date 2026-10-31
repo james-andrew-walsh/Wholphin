@@ -31,6 +31,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -158,6 +159,16 @@ class DownloadsViewModelTest {
                 results = requests.toList(),
             )
     }
+
+    private fun downloadRows(ids: Iterable<Int>) =
+        ids.map {
+            DownloadRow(
+                requestId = it,
+                tmdbId = it,
+                is4k = false,
+                requestStatus = RequestStatus.APPROVED,
+            )
+        }
 
     private fun DownloadsViewModel.rows() = state.value.rows.successValue!!
 
@@ -502,6 +513,66 @@ class DownloadsViewModelTest {
         }
 
     @Test
+    fun `deleted media follows its download all the way to ready`() =
+        runTest(testDispatcher) {
+            media(
+                1,
+                RequestStatus.COMPLETED,
+                SeerrAvailability.DELETED,
+                downloadStatus = listOf(DownloadingItem(status = "downloading")),
+            )
+            coEvery { userLibraryApi.getItem(jellyfinUuid) } returns
+                successResponse(mockk<BaseItemDto>())
+            requests(request(1, status = RequestStatus.COMPLETED))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+            assertEquals(DownloadState.DOWNLOADING, viewModel.rowState())
+
+            // Imported, but Seerr doesn't know until a scan
+            media(1, RequestStatus.COMPLETED, SeerrAvailability.DELETED)
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            assertEquals(DownloadState.PREPARING, viewModel.rowState())
+            assertTrue(viewModel.state.value.refreshing)
+
+            media(1, RequestStatus.COMPLETED, SeerrAvailability.AVAILABLE, jellyfinMediaId = JELLYFIN_ID)
+            advanceTimeBy(15_001)
+            job.cancelAndJoin()
+            assertEquals(DownloadState.READY, viewModel.rowState())
+        }
+
+    @Test
+    fun `a failed grab of deleted media is followed by the next one`() =
+        runTest(testDispatcher) {
+            media(
+                1,
+                availability = SeerrAvailability.DELETED,
+                downloadStatus = listOf(DownloadingItem(status = "downloading")),
+            )
+            requests(request(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            media(
+                1,
+                availability = SeerrAvailability.DELETED,
+                downloadStatus = listOf(DownloadingItem(status = "failed")),
+            )
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            assertEquals(DownloadState.FAILED, viewModel.rowState())
+
+            media(
+                1,
+                availability = SeerrAvailability.DELETED,
+                downloadStatus = listOf(DownloadingItem(status = "downloading")),
+            )
+            advanceTimeBy(15_001)
+            job.cancelAndJoin()
+            assertEquals(DownloadState.DOWNLOADING, viewModel.rowState())
+        }
+
+    @Test
     fun `more pages load from where the last one ended`() =
         runTest(testDispatcher) {
             val firstPage = (1..DOWNLOADS_PAGE_SIZE).map { request(it) }.toTypedArray()
@@ -650,6 +721,114 @@ class DownloadsViewModelTest {
                 )
             }
         }
+
+    @Test
+    fun `a removed request doesn't pull an old one to the top or skip one`() =
+        runTest(testDispatcher) {
+            val firstPage = (50 downTo 31).toList()
+            requests(*firstPage.map { request(it) }.toTypedArray(), total = 50)
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+            viewModel.onResume()
+            advanceUntilIdle()
+            movieFetches.clear()
+
+            val shifted = firstPage.filter { it != 45 } + 30
+            requests(*shifted.map { request(it) }.toTypedArray(), total = 49)
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            assertEquals(firstPage, viewModel.rows().map { it.requestId })
+            assertEquals(emptyList<Int>(), movieFetches)
+            assertEquals(19, viewModel.state.value.fetched)
+
+            // Its row stays, which must not count as another removal
+            viewModel.onResume()
+            advanceUntilIdle()
+            assertEquals(19, viewModel.state.value.fetched)
+
+            requests(request(30), request(29), total = 49)
+            viewModel.loadMore()
+            advanceUntilIdle()
+
+            coVerify {
+                requestApi.requestGet(
+                    take = DOWNLOADS_PAGE_SIZE,
+                    skip = 19,
+                    filter = any(),
+                    sort = any(),
+                    sortDirection = any(),
+                    requestedBy = USER_ID,
+                    mediaType = any(),
+                )
+            }
+            assertEquals(firstPage + listOf(30, 29), viewModel.rows().map { it.requestId })
+        }
+
+    @Test
+    fun `a new request and a removed one on the same page`() =
+        runTest(testDispatcher) {
+            val viewModel = openedPage(request(3), request(2), request(1))
+
+            requests(request(4), request(3), request(1))
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            assertEquals(listOf(4, 3, 2, 1), viewModel.rows().map { it.requestId })
+            assertEquals(3, viewModel.state.value.fetched)
+        }
+
+    @Test
+    fun `only rows above the oldest one on the page can be told to be removed`() {
+        val rows = downloadRows(5 downTo 1)
+
+        assertEquals(setOf(4), removedRequests(rows, setOf(5, 3)))
+        assertEquals(emptySet<Int>(), removedRequests(rows, setOf(6, 5, 4)))
+        assertEquals(emptySet<Int>(), removedRequests(rows, setOf(9, 8)))
+        assertEquals(emptySet<Int>(), removedRequests(rows, emptySet()))
+    }
+
+    @Test
+    fun `leaving the page drops the new requests being fetched`() =
+        runTest(testDispatcher) {
+            media(1)
+            val viewModel = openedPage(request(1))
+            media(2)
+            coEvery {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            } coAnswers {
+                delay(1_000)
+                UserUserIdRequestsGet200Response(
+                    pageInfo = PageInfo(results = 2),
+                    results = listOf(request(2), request(1)),
+                )
+            }
+
+            viewModel.onResume()
+            advanceTimeBy(500)
+            viewModel.onPause()
+            advanceUntilIdle()
+            assertEquals(listOf(1), viewModel.rows().map { it.requestId })
+
+            // Coming back fetches them again
+            viewModel.onResume()
+            advanceUntilIdle()
+            assertEquals(listOf(2, 1), viewModel.rows().map { it.requestId })
+        }
+
+    @Test
+    fun `focus stays on a row the list has composed`() {
+        val rows = downloadRows(1..20)
+
+        // Nothing focused yet
+        assertEquals(0, focusedRowIndex(rows, focusedRequestId = null, restoredRow = 0))
+        // Follows the request, wherever it has moved to
+        assertEquals(4, focusedRowIndex(rows, focusedRequestId = 5, restoredRow = 15))
+        // The process was killed with focus on a row of a later page
+        assertEquals(19, focusedRowIndex(rows, focusedRequestId = 99, restoredRow = 23))
+        // Or on a row which has since been removed
+        assertEquals(3, focusedRowIndex(rows, focusedRequestId = 99, restoredRow = 3))
+    }
 
     @Test
     fun `coming back with nothing new changes nothing`() =

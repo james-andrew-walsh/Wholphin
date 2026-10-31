@@ -148,6 +148,7 @@ data class DownloadRow(
 /**
  * @param loadMoreFailed the last attempt at the next page failed, stays set during a retry so that
  * the retry button doesn't go away until it worked
+ * @param removedRequests the loaded rows whose request is gone and was taken off [fetched]
  */
 data class DownloadsState(
     val rows: DataLoadingState<List<DownloadRow>> = DataLoadingState.Pending,
@@ -156,8 +157,43 @@ data class DownloadsState(
     val loadingMore: Boolean = false,
     val loadMoreFailed: Boolean = false,
     val refreshFailed: Boolean = false,
+    val removedRequests: Set<Int> = emptySet(),
 ) {
     val refreshing: Boolean get() = rows.successValue?.any { it.refreshing } == true
+}
+
+/**
+ * The rows whose request is gone, going by a first page sorted the same way as [rows]
+ *
+ * Only rows above the oldest one on [page] can be told, the others may just be further on.
+ *
+ * @param page the request IDs on the first page
+ */
+internal fun removedRequests(
+    rows: List<DownloadRow>,
+    page: Set<Int>,
+): Set<Int> =
+    rows
+        .take(rows.indexOfLast { it.requestId in page } + 1)
+        .map { it.requestId }
+        .filterNot { it in page }
+        .toSet()
+
+/**
+ * Which row focus belongs on
+ *
+ * The rows aren't saved but the list's position is. After the process was killed the row that had
+ * focus might not be loaded yet, so this falls back to a row the list has composed.
+ *
+ * @param restoredRow the first row the list was showing when it was composed
+ */
+internal fun focusedRowIndex(
+    rows: List<DownloadRow>,
+    focusedRequestId: Int?,
+    restoredRow: Int,
+): Int {
+    val index = rows.indexOfFirst { it.requestId == focusedRequestId }
+    return if (index >= 0) index else restoredRow.coerceAtMost(rows.lastIndex)
 }
 
 private data class DownloadsResult(
@@ -300,19 +336,32 @@ class DownloadsViewModel
                 }
         }
 
+        /**
+         * The list only keeps its place through new rows while it is on screen, what it saves when
+         * it isn't is just an index. So these wait for the next [onResume] instead.
+         */
+        fun onPause() {
+            newRequestsJob?.cancel()
+        }
+
         private suspend fun addNewRequests(userId: Int) {
             val known = _state.value.rows.successValue.orEmpty().map { it.requestId }.toSet()
-            val requests = fetchRequests(userId, 0).results.orEmpty().filter { it.id !in known }
-            if (requests.isEmpty()) return
-            val newRows = createRows(requests)
+            val page = fetchRequests(userId, 0).results.orEmpty()
+            // Newest first, so anything new is ahead of every known request. An unknown one further
+            // down is an old request which moved up because a loaded one was removed
+            val newRows = createRows(page.takeWhile { it.id !in known })
+            val pageIds = page.map { it.id }.toSet()
             _state.update { current ->
                 val rows = current.rows.successValue ?: return@update current
                 val added = newRows.filter { new -> rows.none { it.requestId == new.requestId } }
-                if (added.isEmpty()) return@update current
+                // Their rows stay in the list, so they are found again every time
+                val removed = removedRequests(rows, pageIds) - current.removedRequests
+                if (added.isEmpty() && removed.isEmpty()) return@update current
                 current.copy(
                     rows = DataLoadingState.Success(added + rows),
                     // These moved the rows already fetched along by as many places
-                    fetched = current.fetched + added.size,
+                    fetched = current.fetched + added.size - removed.size,
+                    removedRequests = current.removedRequests + removed,
                 )
             }
         }
@@ -514,7 +563,7 @@ fun DownloadsPage(
 
     LifecycleResumeEffect(Unit) {
         viewModel.onResume()
-        onPauseOrDispose { }
+        onPauseOrDispose { viewModel.onPause() }
     }
 
     // Leaving the page or the app cancels this, so nothing is fetched unless it can be seen
@@ -615,13 +664,14 @@ private fun DownloadsList(
     modifier: Modifier = Modifier,
 ) {
     var focusedRequestId by rememberSaveable { mutableStateOf<Int?>(null) }
-    val focusedRow = rows.indexOfFirst { it.requestId == focusedRequestId }.coerceAtLeast(0)
+    val listState = rememberLazyListState()
+    val restoredRow = remember { listState.firstVisibleItemIndex }
+    val focusedRow = focusedRowIndex(rows, focusedRequestId, restoredRow)
     val focusRequester = remember { FocusRequester() }
     // Not saved, so that coming back to the page focuses the row it was left on
     var focusRestored by remember { mutableStateOf(false) }
     // The last row while the retry button has focus, otherwise null
     var rowBeforeRetry by remember { mutableStateOf<Int?>(null) }
-    val listState = rememberLazyListState()
 
     LaunchedEffect(focusedRow, rows.size) {
         if (focusedRow >= rows.size - ROWS_LOADED_AHEAD) onLoadMore.invoke()

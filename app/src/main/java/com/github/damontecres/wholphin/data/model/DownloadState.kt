@@ -99,9 +99,13 @@ fun downloadProgress(
     }
     if (mediaStatus == SeerrAvailability.BLOCKLISTED) return DownloadProgress(DownloadState.UNAVAILABLE)
     val entry = queue?.minByOrNull { queueStatePriority.indexOf(queueState(it)) }
-    // Seerr keeps deleted media as deleted while Radarr grabs it again, so a live entry wins
-    if (mediaStatus == SeerrAvailability.DELETED && (entry == null || queueState(entry) == DownloadState.FAILED)) {
-        return DownloadProgress(DownloadState.UNAVAILABLE)
+    val failed = entry != null && queueState(entry) == DownloadState.FAILED
+    // Seerr keeps deleted media as deleted while Radarr grabs it again and until a scan finds the
+    // import, so a live download or one that has just left the queue wins
+    if (mediaStatus == SeerrAvailability.DELETED && !seenInQueue && (entry == null || failed)) {
+        // Unlike on a completed request, Radarr normally searches again after this
+        val finished = !(failed && requestStatus == RequestStatus.APPROVED)
+        return DownloadProgress(if (finished) DownloadState.UNAVAILABLE else DownloadState.FAILED)
     }
     if (entry != null) {
         val state = queueState(entry)
@@ -119,8 +123,9 @@ fun downloadProgress(
         mediaStatus == SeerrAvailability.AVAILABLE ||
             mediaStatus == SeerrAvailability.PARTIALLY_AVAILABLE
     // Seerr leaves a completed request as it is when the movie is requested again, so the media's
-    // status can belong to a newer request and nothing is on its way for this one
-    if (requestStatus == RequestStatus.COMPLETED && !available) {
+    // status can belong to a newer request and nothing is on its way for this one. Deleted media
+    // only gets here after a download was seen, which is on its way
+    if (requestStatus == RequestStatus.COMPLETED && !available && mediaStatus != SeerrAvailability.DELETED) {
         return DownloadProgress(DownloadState.UNAVAILABLE)
     }
     return DownloadProgress(
