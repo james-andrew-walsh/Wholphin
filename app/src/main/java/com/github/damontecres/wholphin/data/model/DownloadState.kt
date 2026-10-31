@@ -153,9 +153,8 @@ fun downloadFraction(
     size: Double?,
     sizeLeft: Double?,
 ): Float? {
-    if (size == null || sizeLeft == null || size <= 0.0 || sizeLeft < 0.0 || sizeLeft > size) {
-        return null
-    }
+    if (size == null || sizeLeft == null || !size.isFinite() || !sizeLeft.isFinite()) return null
+    if (size <= 0.0 || sizeLeft < 0.0 || sizeLeft > size) return null
     return ((size - sizeLeft) / size).toFloat()
 }
 

@@ -221,6 +221,8 @@ class DownloadStateTest {
         assertNull(downloadFraction(1000.0, 2000.0))
         assertNull(downloadFraction(1000.0, -1.0))
         assertNull(downloadFraction(Double.NaN, 0.0))
+        assertNull(downloadFraction(1000.0, Double.NaN))
+        assertNull(downloadFraction(Double.POSITIVE_INFINITY, 0.0))
     }
 
     @Test
