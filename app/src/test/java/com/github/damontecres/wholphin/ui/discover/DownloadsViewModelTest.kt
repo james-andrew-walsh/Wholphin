@@ -559,4 +559,43 @@ class DownloadsViewModelTest {
             assertFalse(viewModel.state.value.loadMoreFailed)
             assertEquals(DOWNLOADS_PAGE_SIZE + 1, viewModel.rows().size)
         }
+
+    @Test
+    fun `the retry button stays until a retry worked`() =
+        runTest(testDispatcher) {
+            val firstPage = (1..DOWNLOADS_PAGE_SIZE).map { request(it) }.toTypedArray()
+            requests(*firstPage, total = DOWNLOADS_PAGE_SIZE + 1)
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            coEvery {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            } throws IOException("offline")
+            viewModel.loadMore()
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.loadMoreFailed)
+            assertFalse(viewModel.state.value.loadingMore)
+
+            // Failing again leaves it there
+            viewModel.retryLoadMore()
+            assertTrue(viewModel.state.value.loadMoreFailed)
+            assertTrue(viewModel.state.value.loadingMore)
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.loadMoreFailed)
+            assertFalse(viewModel.state.value.loadingMore)
+
+            requests(request(100), total = DOWNLOADS_PAGE_SIZE + 1)
+            viewModel.retryLoadMore()
+            // Pressing it again while loading does nothing
+            viewModel.retryLoadMore()
+            assertTrue(viewModel.state.value.loadMoreFailed)
+            assertTrue(viewModel.state.value.loadingMore)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.loadMoreFailed)
+            assertFalse(viewModel.state.value.loadingMore)
+            coVerify(exactly = 4) {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
 }

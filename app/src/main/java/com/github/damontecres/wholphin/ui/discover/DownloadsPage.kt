@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,7 +83,6 @@ import com.github.damontecres.wholphin.ui.formatDuration
 import com.github.damontecres.wholphin.ui.ifElse
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
-import com.github.damontecres.wholphin.ui.rememberInt
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.WholphinDispatchers
@@ -144,6 +144,10 @@ data class DownloadRow(
     val refreshing: Boolean get() = item == null || keepsRefreshing(progress.state, requestStatus)
 }
 
+/**
+ * @param loadMoreFailed the last attempt at the next page failed, stays set during a retry so that
+ * the retry button doesn't go away until it worked
+ */
 data class DownloadsState(
     val rows: DataLoadingState<List<DownloadRow>> = DataLoadingState.Pending,
     val fetched: Int = 0,
@@ -227,11 +231,19 @@ class DownloadsViewModel
          * Load the next page, if there is one and the last attempt didn't fail
          */
         fun loadMore() {
+            startLoadMore(retry = false)
+        }
+
+        fun retryLoadMore() {
+            startLoadMore(retry = true)
+        }
+
+        private fun startLoadMore(retry: Boolean) {
             val userId = userId ?: return
             var start = false
             var skip = 0
             _state.update {
-                start = it.hasMore && !it.loadingMore && !it.loadMoreFailed
+                start = it.hasMore && !it.loadingMore && (retry || !it.loadMoreFailed)
                 skip = it.fetched
                 if (start) it.copy(loadingMore = true) else it
             }
@@ -248,6 +260,7 @@ class DownloadsViewModel
                                 fetched = page.fetched,
                                 hasMore = page.hasMore,
                                 loadingMore = false,
+                                loadMoreFailed = false,
                             )
                         }
                     } catch (ex: CancellationException) {
@@ -257,11 +270,6 @@ class DownloadsViewModel
                         _state.update { it.copy(loadingMore = false, loadMoreFailed = true) }
                     }
                 }
-        }
-
-        fun retryLoadMore() {
-            _state.update { it.copy(loadMoreFailed = false) }
-            loadMore()
         }
 
         /**
@@ -551,15 +559,26 @@ private fun DownloadsList(
     onRetryLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var position by rememberInt()
-    val focusedRow = position.coerceIn(rows.indices)
+    var focusedRequestId by rememberSaveable { mutableStateOf<Int?>(null) }
+    val focusedRow = rows.indexOfFirst { it.requestId == focusedRequestId }.coerceAtLeast(0)
     val focusRequester = remember { FocusRequester() }
     // Not saved, so that coming back to the page focuses the row it was left on
     var focusRestored by remember { mutableStateOf(false) }
+    // The last row while the retry button has focus, otherwise null
+    var rowBeforeRetry by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(position, rows.size) {
-        if (position >= rows.size - ROWS_LOADED_AHEAD) onLoadMore.invoke()
+    LaunchedEffect(focusedRow, rows.size) {
+        if (focusedRow >= rows.size - ROWS_LOADED_AHEAD) onLoadMore.invoke()
+    }
+    // The button stays until a row has taken focus from it, or a remote would have nothing focused
+    LaunchedEffect(state.loadMoreFailed) {
+        val lastRow = rowBeforeRetry
+        if (!state.loadMoreFailed && lastRow != null) {
+            val firstNewRow = rows.getOrNull(rows.indexOfFirst { it.requestId == lastRow } + 1)
+            focusedRequestId = (firstNewRow ?: rows.last()).requestId
+            focusRestored = false
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -597,20 +616,34 @@ private fun DownloadsList(
                     modifier =
                         Modifier
                             .ifElse(restoreFocus, Modifier.focusRequester(focusRequester))
-                            .onFocusChanged { if (it.hasFocus) position = index },
+                            .onFocusChanged { if (it.hasFocus) focusedRequestId = row.requestId },
                 )
             }
-            if (state.loadingMore) {
+            val showRetry = state.loadMoreFailed || rowBeforeRetry != null
+            if (state.loadingMore && !showRetry) {
                 item(key = "loading") {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
                         CircularProgress(Modifier.size(32.dp))
                     }
                 }
             }
-            if (state.loadMoreFailed) {
+            if (showRetry) {
                 item(key = "retry") {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-                        TextButton(stringRes = R.string.retry, onClick = onRetryLoadMore)
+                        // Stays the same button while loading so that it keeps focus
+                        TextButton(
+                            onClick = onRetryLoadMore,
+                            modifier =
+                                Modifier.onFocusChanged {
+                                    rowBeforeRetry = if (it.hasFocus) rows.last().requestId else null
+                                },
+                        ) {
+                            if (state.loadMoreFailed && !state.loadingMore) {
+                                Text(text = stringResource(R.string.retry))
+                            } else {
+                                CircularProgress(Modifier.size(24.dp))
+                            }
+                        }
                     }
                 }
             }
