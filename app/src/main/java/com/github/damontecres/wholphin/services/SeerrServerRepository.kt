@@ -18,11 +18,13 @@ import com.github.damontecres.wholphin.util.LoadingState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import okhttp3.OkHttpClient
 import org.jellyfin.sdk.model.api.ImageType
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.seconds
@@ -55,23 +57,52 @@ class SeerrServerRepository
          * Whether Seerr integration is currently active of not
          */
         val active: Flow<Boolean> =
-            connection.map { it is SeerrConnectionStatus.Success && seerrApi.active }
+            connection
+                .map { it is SeerrConnectionStatus.Success && seerrApi.active }
+                .distinctUntilChanged()
+
+        private val connectionAttempt = AtomicInteger()
+
+        /**
+         * Starts a background connection, returning the value to pass to [error] and [setIfLatest]
+         *
+         * Clearing or changing the server overtakes the attempt, and from then on its result is
+         * ignored so that it can't bring back a server the user removed.
+         */
+        fun newConnectionAttempt(): Int = connectionAttempt.incrementAndGet()
+
+        fun isLatestAttempt(attempt: Int): Boolean = connectionAttempt.get() == attempt
 
         fun clear() {
+            newConnectionAttempt()
             _connection.update { SeerrConnectionStatus.NotConfigured }
             seerrApi.update("", null)
         }
 
+        /**
+         * Records a failed connection, unless the attempt was overtaken
+         *
+         * Repeats of the same failure don't emit, so retrying doesn't refresh everything that watches
+         * [connection]
+         */
         fun error(
             server: SeerrServer,
             user: SeerrUser,
             exception: Exception,
+            attempt: Int,
         ) {
-            _connection.update { SeerrConnectionStatus.Error(server, user, exception) }
+            if (!isLatestAttempt(attempt)) return
+            _connection.update { current ->
+                if (current is SeerrConnectionStatus.Error && current.server == server && current.user == user) {
+                    current
+                } else {
+                    SeerrConnectionStatus.Error(server, user, exception)
+                }
+            }
             seerrApi.update("", null)
         }
 
-        suspend fun set(
+        private suspend fun set(
             server: SeerrServer,
             user: SeerrUser,
             userConfig: SeerrUserConfig,
@@ -84,10 +115,33 @@ class SeerrServerRepository
             }
         }
 
+        /**
+         * Records a successful connection, unless the attempt was overtaken
+         */
+        suspend fun setIfLatest(
+            server: SeerrServer,
+            user: SeerrUser,
+            userConfig: SeerrUserConfig,
+            attempt: Int,
+        ) {
+            if (!isLatestAttempt(attempt)) return
+            val publicSettings = seerrApi.api.settingsApi.settingsPublicGet()
+            _connection.update { current ->
+                if (isLatestAttempt(attempt)) {
+                    SeerrConnectionStatus.Success(
+                        CurrentSeerr(server, user, userConfig, publicSettings),
+                    )
+                } else {
+                    current
+                }
+            }
+        }
+
         suspend fun addAndChangeServer(
             url: String,
             apiKey: String,
         ) {
+            newConnectionAttempt()
             var server = seerrServerDao.getServer(url)
             if (server == null) {
                 seerrServerDao.addServer(SeerrServer(url = url))
@@ -120,6 +174,7 @@ class SeerrServerRepository
             username: String,
             password: String,
         ) {
+            newConnectionAttempt()
             var server = seerrServerDao.getServer(url)
             if (server == null) {
                 seerrServerDao.addServer(SeerrServer(url = url))

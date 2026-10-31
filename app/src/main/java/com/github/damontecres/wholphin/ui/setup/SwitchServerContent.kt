@@ -142,11 +142,10 @@ private fun SwitchServerContentInternal(
             ) {
                 val focusRequester = remember { FocusRequester() }
                 val firstServerFocus = remember { FocusRequester() }
-                LaunchedEffect(state.loading) {
+                // With no servers yet, firstServerFocus is on the Add Server card
+                LaunchedEffect(state.loading, state.servers.size) {
                     val state = state
-                    if (state.loading == LoadingState.Success && state.servers.isNotEmpty()) {
-                        firstServerFocus.tryRequestFocus()
-                    } else if (state.loading == LoadingState.Pending) {
+                    if (state.loading == LoadingState.Success || state.loading == LoadingState.Pending) {
                         firstServerFocus.tryRequestFocus()
                     }
                 }

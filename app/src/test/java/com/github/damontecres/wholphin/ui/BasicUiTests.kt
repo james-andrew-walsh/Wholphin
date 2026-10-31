@@ -167,9 +167,6 @@ class BasicUiTests {
         TestModule.testDispatcher.scheduler.advanceUntilIdle()
 
         composeTestRule.onNodeWithText("Add Server").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("add_server").performKeyInput {
-            pressKey(Key.DirectionDown) // TODO fix focus
-        }
         composeTestRule
             .onNodeWithTag("add_server")
             .assertIsFocused()
@@ -236,9 +233,6 @@ class BasicUiTests {
         TestModule.testDispatcher.scheduler.advanceUntilIdle()
 
         composeTestRule.onNodeWithText("Add Server").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("add_server").performKeyInput {
-            pressKey(Key.DirectionDown) // TODO fix focus
-        }
         composeTestRule
             .onNodeWithTag("add_server")
             .assertIsFocused()

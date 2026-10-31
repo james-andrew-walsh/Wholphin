@@ -90,8 +90,13 @@ fun UserList(
         ) {
             val focusRequester = remember { FocusRequester() }
             val firstFocusRequester = remember { FocusRequester() }
-            if (users.isNotEmpty()) {
-                LaunchedEffect(Unit) { focusRequester.tryRequestFocus() }
+            // With no users, firstFocusRequester is on the Add User card
+            LaunchedEffect(users.isEmpty()) {
+                if (users.isEmpty()) {
+                    firstFocusRequester.tryRequestFocus()
+                } else {
+                    focusRequester.tryRequestFocus()
+                }
             }
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(24.dp), // Spacing to accommodate 20% scale
@@ -115,6 +120,7 @@ fun UserList(
                 item {
                     AddUserCard(
                         onClick = { onAddUser.invoke() },
+                        modifier = if (users.isEmpty()) Modifier.focusRequester(firstFocusRequester) else Modifier,
                     )
                 }
             }
