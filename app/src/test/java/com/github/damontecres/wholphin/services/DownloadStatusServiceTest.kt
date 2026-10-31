@@ -203,8 +203,12 @@ class DownloadStatusParsingTest {
     @Test
     fun `the service is on Seerr's host`() {
         assertEquals(
-            "http://seerr.test:8097/v1/downloads/$HASH",
-            downloadStatusUrl("https://seerr.test:5055/", HASH).toString(),
+            "http://10.0.0.2:8097/v1/downloads/$HASH",
+            downloadStatusUrl("http://10.0.0.2:5055/", HASH).toString(),
+        )
+        assertEquals(
+            "http://[fd00::2]:8097/v1/downloads/$HASH",
+            downloadStatusUrl("http://[FD00::2]:5055", HASH).toString(),
         )
     }
 
@@ -212,6 +216,64 @@ class DownloadStatusParsingTest {
     fun `there is no URL without a Seerr server`() {
         assertNull(downloadStatusUrl(null, HASH))
         assertNull(downloadStatusUrl("", HASH))
+    }
+
+    @Test
+    fun `a Seerr server on HTTPS is never downgraded`() {
+        assertNull(downloadStatusUrl("https://requests.example.com", HASH))
+        assertNull(downloadStatusUrl("https://10.0.0.2:5055", HASH))
+        assertNull(downloadStatusUrl("https://seerr.local:5055", HASH))
+    }
+
+    @Test
+    fun `a Seerr server outside the local network gets no URL`() {
+        assertNull(downloadStatusUrl("http://requests.example.com:5055", HASH))
+        assertNull(downloadStatusUrl("http://8.8.8.8:5055", HASH))
+        assertNull(downloadStatusUrl("http://[2001:db8::2]:5055", HASH))
+    }
+
+    @Test
+    fun `local hosts`() {
+        listOf(
+            "10.0.0.2",
+            "10.255.255.254",
+            "172.16.0.2",
+            "172.31.255.254",
+            "192.168.0.2",
+            "169.254.0.2",
+            "fd00::2",
+            "fc00::2",
+            "fe80::2",
+            "febf::2",
+            "seerr",
+            "seerr.local",
+            "seerr.lan",
+            "seerr.home.arpa",
+            "seerr.internal",
+        ).forEach { assertTrue(it, isLanHost(it)) }
+    }
+
+    @Test
+    fun `hosts that are not provably local`() {
+        listOf(
+            "8.8.8.8",
+            "172.15.0.2",
+            "172.32.0.2",
+            "192.169.0.2",
+            "169.253.0.2",
+            "100.64.0.2",
+            "127.0.0.1",
+            "010.0.0.2",
+            "10.0.0",
+            "134744072",
+            "0x8080808",
+            "2001:db8::2",
+            "fc::2",
+            "fec0::2",
+            "::1",
+            "example.com",
+            "local.example.com",
+        ).forEach { assertFalse(it, isLanHost(it)) }
     }
 
     @Test
@@ -259,7 +321,7 @@ class DownloadStatusServiceTest {
     @Before
     fun setUp() {
         WholphinDispatchers.configure(testDispatcher)
-        every { seerrServerRepository.currentServer } returns flowOf(SeerrServer(url = "http://seerr.test:5055"))
+        every { seerrServerRepository.currentServer } returns flowOf(SeerrServer(url = "http://seerr.local:5055"))
         every { serverRepository.currentUser } returns user
         every { user.accessToken } returns "made-up-token"
     }
@@ -278,7 +340,20 @@ class DownloadStatusServiceTest {
             val request = requests.single()
             assertEquals("GET", request.method)
             assertEquals("made-up-token", request.header("X-Emby-Token"))
-            assertEquals("http://seerr.test:8097/v1/downloads/$HASH", request.url.toString())
+            assertEquals("http://seerr.local:8097/v1/downloads/$HASH", request.url.toString())
+        }
+
+    @Test
+    fun `nothing is sent to a Seerr server on HTTPS`() =
+        runTest(testDispatcher) {
+            every { seerrServerRepository.currentServer } returns
+                flowOf(SeerrServer(url = "https://requests.example.com"))
+
+            assertEquals(
+                DownloadStatusResult.Failure(DownloadStatusError.SERVICE_UNAVAILABLE),
+                service.fetch(HASH),
+            )
+            assertTrue(requests.isEmpty())
         }
 
     @Test

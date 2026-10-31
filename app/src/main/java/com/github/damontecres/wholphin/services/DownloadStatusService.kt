@@ -22,6 +22,18 @@ import kotlin.time.Duration.Companion.seconds
 // The service runs beside Seerr, on its host. Plain HTTP on the LAN, which the app's network
 // security config allows the same as for Seerr
 private const val STATUS_PORT = 8097
+
+// 10/8, 172.16/12, 192.168/16 and link-local 169.254/16
+private val LAN_IPV4 =
+    Regex("""(10\.\d{1,3}|172\.(1[6-9]|2\d|3[01])|192\.168|169\.254)(\.\d{1,3}){2}""")
+
+// Unique local fc00::/7 and link-local fe80::/10, as OkHttp writes a host
+private val LAN_IPV6 = Regex("""(f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):.*""")
+
+// Names that public DNS can't resolve. A name with no dots is one too, but not one starting with a
+// digit: resolvers read 134744072 or 0x8080808 as an address
+private val LAN_NAME_SUFFIXES = listOf(".local", ".lan", ".home.arpa", ".internal")
+
 private const val TOKEN_HEADER = "X-Emby-Token"
 private const val HTTP_OK = 200
 private const val HTTP_UNAUTHORIZED = 401
@@ -67,7 +79,24 @@ sealed interface DownloadStatusResult {
 }
 
 /**
+ * Whether a host is on the local network, judged from the text alone so that this never needs DNS
+ *
+ * @param host as [HttpUrl.host] has it
+ */
+internal fun isLanHost(host: String): Boolean =
+    when {
+        ':' in host -> LAN_IPV6.matches(host)
+        host.all { it.isDigit() || it == '.' } -> LAN_IPV4.matches(host)
+        '.' in host -> LAN_NAME_SUFFIXES.any { host.endsWith(it) }
+        else -> host.first().isLetter()
+    }
+
+/**
  * The address of a download on the status service
+ *
+ * Every request carries the Jellyfin token in the clear, so there is no address unless Seerr itself
+ * is on plain HTTP on the local network. Anything else would send the token over a connection that
+ * the user didn't choose.
  *
  * @param seerrUrl the configured Seerr server, whose host the service is on
  * @return the URL or null if there is no usable Seerr server
@@ -76,11 +105,12 @@ internal fun downloadStatusUrl(
     seerrUrl: String?,
     hash: String,
 ): HttpUrl? {
-    val host = seerrUrl?.toHttpUrlOrNull()?.host ?: return null
+    val seerr = seerrUrl?.toHttpUrlOrNull() ?: return null
+    if (seerr.isHttps || !isLanHost(seerr.host)) return null
     return HttpUrl
         .Builder()
         .scheme("http")
-        .host(host)
+        .host(seerr.host)
         .port(STATUS_PORT)
         .addPathSegments("v1/downloads")
         .addPathSegment(hash)
