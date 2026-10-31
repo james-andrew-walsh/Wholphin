@@ -119,6 +119,46 @@ class DownloadStateTest {
     }
 
     @Test
+    fun `a completed request isn't preparing unless the media is available`() {
+        listOf(
+            SeerrAvailability.UNKNOWN,
+            SeerrAvailability.PENDING,
+            SeerrAvailability.PROCESSING,
+            null,
+        ).forEach {
+            listOf(false, true).forEach { seen ->
+                val status =
+                    progress(
+                        requestStatus = RequestStatus.COMPLETED,
+                        mediaStatus = it,
+                        queue = emptyList(),
+                        seenInQueue = seen,
+                    )
+                assertEquals(it.toString(), DownloadState.UNAVAILABLE, status.state)
+                assertFalse(keepsRefreshing(status.state, RequestStatus.COMPLETED))
+            }
+        }
+        assertEquals(
+            DownloadState.PREPARING,
+            progress(
+                requestStatus = RequestStatus.COMPLETED,
+                mediaStatus = SeerrAvailability.PARTIALLY_AVAILABLE,
+            ).state,
+        )
+    }
+
+    @Test
+    fun `a completed request still shows a download in the queue`() {
+        assertEquals(
+            DownloadState.DOWNLOADING,
+            progress(
+                requestStatus = RequestStatus.COMPLETED,
+                queue = listOf(queued("downloading")),
+            ).state,
+        )
+    }
+
+    @Test
     fun `queue statuses are normalized`() {
         val expected =
             mapOf(

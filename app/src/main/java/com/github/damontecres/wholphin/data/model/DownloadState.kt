@@ -113,12 +113,17 @@ fun downloadProgress(
             DownloadProgress(state)
         }
     }
-    val downloaded =
-        seenInQueue ||
-            requestStatus == RequestStatus.COMPLETED ||
-            mediaStatus == SeerrAvailability.AVAILABLE ||
+    val available =
+        mediaStatus == SeerrAvailability.AVAILABLE ||
             mediaStatus == SeerrAvailability.PARTIALLY_AVAILABLE
-    return DownloadProgress(if (downloaded) DownloadState.PREPARING else DownloadState.SEARCHING)
+    // Seerr leaves a completed request as it is when the movie is requested again, so the media's
+    // status can belong to a newer request and nothing is on its way for this one
+    if (requestStatus == RequestStatus.COMPLETED && !available) {
+        return DownloadProgress(DownloadState.UNAVAILABLE)
+    }
+    return DownloadProgress(
+        if (seenInQueue || available) DownloadState.PREPARING else DownloadState.SEARCHING,
+    )
 }
 
 /**
