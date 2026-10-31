@@ -5,6 +5,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.datastore.core.DataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.DiscoverItem
@@ -352,7 +353,10 @@ class SearchViewModel
                         seerrService
                             .search(query)
                             .map { seerrService.createDiscoverItem(it) }
-                            .filter { it.type == SeerrItemType.MOVIE || it.type == SeerrItemType.TV }
+                            .filter {
+                                it.type == SeerrItemType.MOVIE ||
+                                    (it.type == SeerrItemType.TV && !BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED)
+                            }
                     _state.update { it.copy(seerrResults = SearchResult.SuccessSeerr(results)) }
                 }
             }

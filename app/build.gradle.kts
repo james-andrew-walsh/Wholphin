@@ -168,6 +168,7 @@ configure<ApplicationExtension> {
         val featureRemoteTrailers = "REMOTE_TRAILERS_ENABLED"
         val featureUpstreamNetwork = "UPSTREAM_NETWORK_ENABLED"
         val featureSeerrApiKeyAuth = "SEERR_API_KEY_AUTH_ENABLED"
+        val featureMoviesOnlyDiscover = "MOVIES_ONLY_DISCOVER_ENABLED"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
 
@@ -204,6 +205,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
+            setFeatureFlag(featureMoviesOnlyDiscover, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
         }
@@ -219,6 +221,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
+            setFeatureFlag(featureMoviesOnlyDiscover, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
         }
@@ -234,6 +237,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
+            setFeatureFlag(featureMoviesOnlyDiscover, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
         }
@@ -252,6 +256,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureRemoteTrailers, false)
             setFeatureFlag(featureUpstreamNetwork, false)
             setFeatureFlag(featureSeerrApiKeyAuth, false)
+            setFeatureFlag(featureMoviesOnlyDiscover, true)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // The upstream release this is merged with, raise it with each upstream merge
             setUpgradeBaseline("1.0.9")

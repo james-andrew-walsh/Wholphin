@@ -2,6 +2,7 @@ package com.github.damontecres.wholphin.util
 
 import androidx.annotation.StringRes
 import com.github.damontecres.wholphin.R
+import com.github.damontecres.wholphin.api.seerr.SearchApi
 import com.github.damontecres.wholphin.api.seerr.model.MovieResult
 import com.github.damontecres.wholphin.api.seerr.model.TvResult
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
@@ -48,6 +49,7 @@ enum class DiscoverRequestType(
     TRENDING(R.string.trending),
     UPCOMING_TV(R.string.upcoming_tv),
     UPCOMING_MOVIES(R.string.upcoming_movies),
+    TRENDING_MOVIES_WEEK(R.string.popular_this_week),
     UNKNOWN(R.string.unknown),
 }
 
@@ -115,6 +117,22 @@ val TrendingRequestHandler =
             api.api.searchApi.discoverTrendingGet(page = pageNumber).let {
                 QueryResult(it.results.orEmpty(), it.totalResults ?: 0)
             }
+    }
+
+val TrendingMoviesWeekRequestHandler =
+    object : DiscoverRequestHandler<SeerrSearchResult> {
+        override suspend fun execute(
+            api: SeerrApi,
+            pageNumber: Int,
+        ): QueryResult<SeerrSearchResult> =
+            api.api.searchApi
+                .discoverTrendingGet(
+                    page = pageNumber,
+                    mediaType = SearchApi.MediaTypeDiscoverTrendingGet.MOVIE,
+                    timeWindow = SearchApi.TimeWindowDiscoverTrendingGet.WEEK,
+                ).let {
+                    QueryResult(it.results.orEmpty(), it.totalResults ?: 0)
+                }
     }
 
 val UpcomingTvRequestHandler =

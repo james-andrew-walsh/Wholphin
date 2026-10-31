@@ -507,6 +507,13 @@
     <string name="trending">Trending</string>
     <string name="upcoming_movies">Upcoming Movies</string>
     <string name="upcoming_tv">Upcoming TV Shows</string>
+    <string name="popular_this_week">Popular This Week</string>
+    <string name="popular">Popular</string>
+    <string name="highly_rated">Highly Rated</string>
+    <string name="new_releases">New Releases</string>
+    <string name="upcoming">Upcoming</string>
+    <string name="decades">Decades</string>
+    <string name="year_or_decade">Year/Decade</string>
     <string name="request_4k">Request in 4K</string>
     <string name="software_decoding_av1">AV1 software decoding</string>
     <string name="upgrade_mpv_toast">MPV is now the default player except for HDR.\nYou can change this in settings.</string>

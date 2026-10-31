@@ -21,15 +21,19 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.damontecres.wholphin.BuildConfig
+import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
 import com.github.damontecres.wholphin.data.filter.DiscoverSort
 import com.github.damontecres.wholphin.data.filter.DiscoverSortAndDirection
 import com.github.damontecres.wholphin.data.filter.FilterValueOption
+import com.github.damontecres.wholphin.data.filter.browseMovieFilters
 import com.github.damontecres.wholphin.data.filter.discoverMovieFilters
 import com.github.damontecres.wholphin.data.filter.discoverTvFilters
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.services.FilterOptionCache
+import com.github.damontecres.wholphin.services.KeyValueService
 import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.SeerrApi
 import com.github.damontecres.wholphin.services.SeerrService
@@ -38,6 +42,7 @@ import com.github.damontecres.wholphin.ui.components.ErrorMessage
 import com.github.damontecres.wholphin.ui.components.LoadingPage
 import com.github.damontecres.wholphin.ui.detail.CardGrid
 import com.github.damontecres.wholphin.ui.launchDefault
+import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import com.github.damontecres.wholphin.util.DataLoadingState
@@ -45,6 +50,7 @@ import com.github.damontecres.wholphin.util.DiscoverMovieRequestHandler
 import com.github.damontecres.wholphin.util.DiscoverRequestPager
 import com.github.damontecres.wholphin.util.DiscoverRequestType
 import com.github.damontecres.wholphin.util.DiscoverTvRequestHandler
+import com.github.damontecres.wholphin.util.TrendingMoviesWeekRequestHandler
 import com.github.damontecres.wholphin.util.TrendingRequestHandler
 import com.github.damontecres.wholphin.util.UpcomingMovieRequestHandler
 import com.github.damontecres.wholphin.util.UpcomingTvRequestHandler
@@ -57,6 +63,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import timber.log.Timber
 
@@ -69,9 +76,12 @@ class DiscoverRequestViewModel
         val navigationManager: NavigationManager,
         private val api: SeerrApi,
         private val filterOptionCache: FilterOptionCache,
+        private val keyValueService: KeyValueService,
+        private val serverRepository: ServerRepository,
         @Assisted val type: DiscoverRequestType,
         @Assisted startIndex: Int,
         @Assisted initialFilter: DiscoverFilter,
+        @Assisted private val persistKey: String?,
     ) : ViewModel() {
         @AssistedFactory
         interface Factory {
@@ -79,6 +89,7 @@ class DiscoverRequestViewModel
                 type: DiscoverRequestType,
                 startIndex: Int,
                 initialFilter: DiscoverFilter,
+                persistKey: String?,
             ): DiscoverRequestViewModel
         }
 
@@ -87,22 +98,18 @@ class DiscoverRequestViewModel
 
         init {
             viewModelScope.launchDefault {
-                val (sortOptions, potentialFilterOptions) =
-                    when (type) {
-                        DiscoverRequestType.DISCOVER_TV -> DiscoverSort.entries.toList() to discoverTvFilters
-                        DiscoverRequestType.DISCOVER_MOVIES -> DiscoverSort.entries.toList() to discoverMovieFilters
-                        DiscoverRequestType.TRENDING -> emptyList<DiscoverSort>() to emptyList()
-                        DiscoverRequestType.UPCOMING_TV -> emptyList<DiscoverSort>() to emptyList()
-                        DiscoverRequestType.UPCOMING_MOVIES -> emptyList<DiscoverSort>() to emptyList()
-                        DiscoverRequestType.UNKNOWN -> emptyList<DiscoverSort>() to emptyList()
-                    }
+                val moviesOnly = BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED
+                val sortOptions = discoverSortOptions(type, moviesOnly)
+                val potentialFilterOptions = discoverFilterOptions(type, moviesOnly)
+                val saved = loadSavedFilter()
                 val sortAndDirection =
                     when (type) {
                         DiscoverRequestType.DISCOVER_TV -> DiscoverSortAndDirection()
-                        DiscoverRequestType.DISCOVER_MOVIES -> DiscoverSortAndDirection()
+                        DiscoverRequestType.DISCOVER_MOVIES -> saved?.sortBy ?: initialFilter.sortBy ?: DiscoverSortAndDirection()
                         DiscoverRequestType.TRENDING -> DiscoverSortAndDirection()
                         DiscoverRequestType.UPCOMING_TV -> DiscoverSortAndDirection()
                         DiscoverRequestType.UPCOMING_MOVIES -> DiscoverSortAndDirection()
+                        DiscoverRequestType.TRENDING_MOVIES_WEEK -> DiscoverSortAndDirection()
                         DiscoverRequestType.UNKNOWN -> DiscoverSortAndDirection()
                     }
                 val filterOptions =
@@ -120,11 +127,44 @@ class DiscoverRequestViewModel
                         sortAndDirection = sortAndDirection,
                     )
                 }
-                fetchData(sortAndDirection, initialFilter, startIndex)
+                fetchData(sortAndDirection, saved?.copy(sortBy = null) ?: initialFilter, startIndex)
             }
         }
 
         private var fetchJob: Job? = null
+        private var saveJob: Job? = null
+
+        /**
+         * Get the saved filter and sort for the current user, if this grid has any
+         */
+        private suspend fun loadSavedFilter(): DiscoverFilter? {
+            val key = persistKey ?: return null
+            val userId = serverRepository.currentUser?.id ?: return null
+            return try {
+                keyValueService.get<DiscoverFilter?>(userId, key, null).first()
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                Timber.w(ex, "Could not read saved filter %s", key)
+                null
+            }
+        }
+
+        private fun persist() {
+            val key = persistKey ?: return
+            val userId = serverRepository.currentUser?.id ?: return
+            saveJob?.cancel()
+            saveJob =
+                viewModelScope.launchIO {
+                    // Read the state here so that a late save can't store an older selection
+                    val current = state.value
+                    keyValueService.save(
+                        userId,
+                        key,
+                        current.filter.copy(sortBy = current.sortAndDirection),
+                    )
+                }
+        }
 
         private suspend fun fetchData(
             sortAndDirection: DiscoverSortAndDirection,
@@ -190,6 +230,15 @@ class DiscoverRequestViewModel
                                     )
                                 }
 
+                                DiscoverRequestType.TRENDING_MOVIES_WEEK -> {
+                                    DiscoverRequestPager(
+                                        api,
+                                        TrendingMoviesWeekRequestHandler,
+                                        seerrService::createDiscoverItem,
+                                        viewModelScope,
+                                    )
+                                }
+
                                 DiscoverRequestType.UNKNOWN -> {
                                     throw IllegalArgumentException("Cannot display grid for DiscoverRequestType.UNKNOWN")
                                 }
@@ -216,6 +265,7 @@ class DiscoverRequestViewModel
             viewModelScope.launchDefault {
                 _state.update { it.copy(startIndex = 0) }
                 fetchData(newSort, state.value.filter)
+                persist()
             }
         }
 
@@ -223,6 +273,15 @@ class DiscoverRequestViewModel
             viewModelScope.launchDefault {
                 _state.update { it.copy(startIndex = 0) }
                 fetchData(state.value.sortAndDirection, newFilter)
+                persist()
+            }
+        }
+
+        fun resetFilters() {
+            viewModelScope.launchDefault {
+                _state.update { it.copy(startIndex = 0) }
+                fetchData(DiscoverSortAndDirection(), DiscoverFilter())
+                persist()
             }
         }
 
@@ -239,6 +298,76 @@ data class DiscoverRequestState(
     val sortAndDirection: DiscoverSortAndDirection = DiscoverSortAndDirection(),
 )
 
+/**
+ * The sorts offered for a grid of the [type]
+ *
+ * @param moviesOnly whether this is the movie browsing experience
+ */
+fun discoverSortOptions(
+    type: DiscoverRequestType,
+    moviesOnly: Boolean,
+): List<DiscoverSort> {
+    val defaultSorts = DiscoverSort.entries - DiscoverSort.PRIMARY_RELEASE_DATE
+    return when (type) {
+        DiscoverRequestType.DISCOVER_TV -> {
+            defaultSorts
+        }
+
+        DiscoverRequestType.DISCOVER_MOVIES -> {
+            if (moviesOnly) {
+                listOf(
+                    DiscoverSort.POPULARITY,
+                    DiscoverSort.PRIMARY_RELEASE_DATE,
+                    DiscoverSort.TMDB_VOTE,
+                    DiscoverSort.ALPHABETICAL,
+                )
+            } else {
+                defaultSorts
+            }
+        }
+
+        DiscoverRequestType.TRENDING,
+        DiscoverRequestType.UPCOMING_TV,
+        DiscoverRequestType.UPCOMING_MOVIES,
+        DiscoverRequestType.TRENDING_MOVIES_WEEK,
+        DiscoverRequestType.UNKNOWN,
+        -> {
+            emptyList()
+        }
+    }
+}
+
+/**
+ * The filters that could be offered for a grid of the [type]
+ *
+ * @param moviesOnly whether this is the movie browsing experience
+ */
+fun discoverFilterOptions(
+    type: DiscoverRequestType,
+    moviesOnly: Boolean,
+): List<DiscoverFilterBy<*>> =
+    when (type) {
+        DiscoverRequestType.DISCOVER_TV -> {
+            discoverTvFilters
+        }
+
+        DiscoverRequestType.DISCOVER_MOVIES -> {
+            if (moviesOnly) browseMovieFilters else discoverMovieFilters
+        }
+
+        DiscoverRequestType.TRENDING,
+        DiscoverRequestType.UPCOMING_TV,
+        DiscoverRequestType.UPCOMING_MOVIES,
+        DiscoverRequestType.TRENDING_MOVIES_WEEK,
+        DiscoverRequestType.UNKNOWN,
+        -> {
+            emptyList()
+        }
+    }
+
+/**
+ * @param persistKey if set, the filter and sort are saved per user under this key and restored
+ */
 @Composable
 fun DiscoverRequestGrid(
     destination: Destination.DiscoverMoreResult,
@@ -246,6 +375,7 @@ fun DiscoverRequestGrid(
     positionCallback: (columns: Int, position: Int) -> Unit,
     modifier: Modifier = Modifier,
     viewModelKey: String? = null,
+    persistKey: String? = null,
     viewModel: DiscoverRequestViewModel =
         hiltViewModel<DiscoverRequestViewModel, DiscoverRequestViewModel.Factory>(
             key = viewModelKey,
@@ -254,11 +384,15 @@ fun DiscoverRequestGrid(
                     destination.type,
                     destination.startIndex,
                     destination.initialFilter,
+                    persistKey,
                 )
             },
         ),
 ) {
     val state by viewModel.state.collectAsState()
+    val canReset =
+        persistKey != null &&
+            (state.filter != DiscoverFilter() || state.sortAndDirection != DiscoverSortAndDirection())
 
     var showHeader by rememberSaveable { mutableStateOf(state.startIndex < 6) }
     Column(
@@ -279,6 +413,7 @@ fun DiscoverRequestGrid(
             currentFilter = state.filter,
             filterOptions = state.filterOptions,
             onFilterChange = viewModel::onFilterChange,
+            onReset = if (canReset) viewModel::resetFilters else null,
             modifier = Modifier.fillMaxWidth(),
         )
         when (val s = state.loading) {

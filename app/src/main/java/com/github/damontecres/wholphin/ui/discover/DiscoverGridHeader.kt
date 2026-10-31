@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.unit.dp
+import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
 import com.github.damontecres.wholphin.data.filter.DiscoverSort
@@ -24,6 +25,7 @@ import com.github.damontecres.wholphin.data.filter.FilterValueOption
 import com.github.damontecres.wholphin.ui.components.DiscoverFilterByButton
 import com.github.damontecres.wholphin.ui.components.DiscoverSortByButton
 import com.github.damontecres.wholphin.ui.components.GridTitle
+import com.github.damontecres.wholphin.ui.components.TextButton
 
 @Composable
 fun DiscoverGridHeader(
@@ -41,6 +43,7 @@ fun DiscoverGridHeader(
     onFilterChange: (DiscoverFilter) -> Unit = {},
     onShowFilterDropdown: ((Boolean) -> Unit)? = null,
     filterButtonFocusRequester: FocusRequester = remember { FocusRequester() },
+    onReset: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         showHeader,
@@ -88,6 +91,12 @@ fun DiscoverGridHeader(
                                 getPossibleValues = getPossibleFilterValues,
                                 modifier = Modifier.focusRequester(filterButtonFocusRequester),
                                 onShow = onShowFilterDropdown,
+                            )
+                        }
+                        if (onReset != null) {
+                            TextButton(
+                                stringRes = R.string.reset,
+                                onClick = onReset,
                             )
                         }
 //                        ExpandableFaButton(

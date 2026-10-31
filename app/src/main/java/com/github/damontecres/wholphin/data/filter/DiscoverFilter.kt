@@ -24,6 +24,7 @@ enum class DiscoverSort(
     RELEASE_DATE("release_date", R.string.sort_by_date_released, "first_air_date"),
     TMDB_VOTE("vote_average", R.string.community_rating),
     ALPHABETICAL("original_title", R.string.sort_by_name),
+    PRIMARY_RELEASE_DATE("primary_release_date", R.string.sort_by_date_released, "first_air_date"),
 }
 
 private val SortOrder.key get() =
@@ -54,6 +55,9 @@ data class DiscoverFilter(
     val sortBy: DiscoverSortAndDirection? = null,
 //    val firstAirDateGte: LocalDate? = null,
 //    val firstAirDateLte: LocalDate? = null,
+    // ISO yyyy-MM-dd, only sent for movies
+    val primaryReleaseDateGte: String? = null,
+    val primaryReleaseDateLte: String? = null,
     val withRuntimeGte: Duration? = null,
     val withRuntimeLte: Duration? = null,
     val voteAverageGte: Int? = null,
@@ -137,6 +141,8 @@ data class DiscoverFilter(
             keywords = keywordIds?.joinToString(",") { it.toString() },
             excludeKeywords = excludeKeywordIds?.joinToString(",") { it.toString() },
             sortBy = sortBy?.key(false),
+            primaryReleaseDateGte = primaryReleaseDateGte,
+            primaryReleaseDateLte = primaryReleaseDateLte,
 //            firstAirDateGte = firstAirDateGte?.let { dateFormatter.format(it) },
 //            firstAirDateLte = firstAirDateLte?.let { dateFormatter.format(it) },
             withRuntimeGte = withRuntimeGte?.inWholeMinutes?.toInt(),
@@ -165,6 +171,11 @@ val discoverMovieFilters =
         DiscoverRatingFilter,
         DiscoverMovieContentRatingFilter,
     )
+
+/**
+ * [discoverMovieFilters] plus [DiscoverMovieYearFilter], only for the movie browse grids
+ */
+val browseMovieFilters: List<DiscoverFilterBy<*>> = discoverMovieFilters + DiscoverMovieYearFilter
 
 val discoverTvFilters =
     listOf(
@@ -284,4 +295,34 @@ data object DiscoverRatingFilter : DiscoverFilterBy<Int> {
         value: Int?,
         filter: DiscoverFilter,
     ): DiscoverFilter = filter.copy(voteAverageGte = value)
+}
+
+/**
+ * An inclusive range of primary release dates, either side can be open
+ */
+data class DiscoverYearRange(
+    val gte: String?,
+    val lte: String?,
+)
+
+data object DiscoverMovieYearFilter : DiscoverFilterBy<DiscoverYearRange> {
+    override val stringRes: Int = R.string.year_or_decade
+
+    override val supportMultiple: Boolean = false
+
+    override fun get(filter: DiscoverFilter): DiscoverYearRange? =
+        if (filter.primaryReleaseDateGte == null && filter.primaryReleaseDateLte == null) {
+            null
+        } else {
+            DiscoverYearRange(filter.primaryReleaseDateGte, filter.primaryReleaseDateLte)
+        }
+
+    override fun set(
+        value: DiscoverYearRange?,
+        filter: DiscoverFilter,
+    ): DiscoverFilter =
+        filter.copy(
+            primaryReleaseDateGte = value?.gte,
+            primaryReleaseDateLte = value?.lte,
+        )
 }

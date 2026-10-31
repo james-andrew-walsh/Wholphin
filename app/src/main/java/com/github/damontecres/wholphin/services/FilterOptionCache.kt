@@ -9,6 +9,7 @@ import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieStudiosFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverMovieYearFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvGenreFilter
@@ -24,6 +25,7 @@ import com.github.damontecres.wholphin.data.filter.PlayedFilter
 import com.github.damontecres.wholphin.data.filter.StudioFilter
 import com.github.damontecres.wholphin.data.filter.VideoTypeFilter
 import com.github.damontecres.wholphin.data.filter.YearFilter
+import com.github.damontecres.wholphin.data.filter.movieYearFilterOptions
 import com.github.damontecres.wholphin.services.hilt.IoCoroutineScope
 import com.github.damontecres.wholphin.ui.showToast
 import com.mayakapps.kache.InMemoryKache
@@ -42,6 +44,7 @@ import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.SortOrder
 import timber.log.Timber
+import java.time.LocalDate
 import java.util.TreeSet
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -258,6 +261,10 @@ class FilterOptionCache
                     (1..10).map {
                         FilterValueOption("$it", it)
                     }
+                }
+
+                DiscoverMovieYearFilter -> {
+                    movieYearFilterOptions(LocalDate.now())
                 }
             }
         }

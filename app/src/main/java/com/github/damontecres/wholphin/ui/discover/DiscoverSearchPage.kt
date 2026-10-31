@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.preferences.UserPreferences
@@ -94,7 +95,10 @@ class DiscoverSearchViewModel
                         seerrService
                             .search(query)
                             .map { seerrService.createDiscoverItem(it) }
-                            .filter { it.type == SeerrItemType.MOVIE || it.type == SeerrItemType.TV }
+                            .filter {
+                                it.type == SeerrItemType.MOVIE ||
+                                    (it.type == SeerrItemType.TV && !BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED)
+                            }
                     Timber.v("Seerr search complete: %s results", results.size)
                     seerrResults.value = SearchResult.SuccessSeerr(results)
                 } catch (ex: CancellationException) {

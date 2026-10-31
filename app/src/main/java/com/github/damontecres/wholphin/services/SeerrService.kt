@@ -11,18 +11,22 @@ import com.github.damontecres.wholphin.api.seerr.model.SearchGet200ResponseResul
 import com.github.damontecres.wholphin.api.seerr.model.ServiceProfile
 import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.api.seerr.model.TvResult
+import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.SeerrPermission
 import com.github.damontecres.wholphin.data.model.hasPermission
+import com.github.damontecres.wholphin.ui.components.Genre
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrProfile
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrRequestData
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrRootFolder
+import com.github.damontecres.wholphin.ui.discover.toUUID
 import com.github.damontecres.wholphin.ui.formatBytes
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.toLocalDate
+import com.github.damontecres.wholphin.util.TrendingMoviesWeekRequestHandler
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -80,6 +84,45 @@ class SeerrService
                 .results
                 ?.map { createDiscoverItem(it) }
                 .orEmpty()
+
+        suspend fun discoverMoviesBy(
+            filter: DiscoverFilter,
+            page: Int = 1,
+        ): List<DiscoverItem> =
+            filter
+                .discoverMovies(api.searchApi, page)
+                .results
+                ?.map { createDiscoverItem(it) }
+                .orEmpty()
+
+        suspend fun trendingMoviesWeek(page: Int = 1): List<DiscoverItem> =
+            TrendingMoviesWeekRequestHandler
+                .execute(seerApi, page)
+                .items
+                .map { createDiscoverItem(it) }
+
+        suspend fun movieGenres(): List<Genre> =
+            api.searchApi
+                .discoverGenresliderMovieGet()
+                .filter { it.id != null && it.name != null }
+                .map {
+                    val imageUrl =
+                        it.backdrops?.randomOrNull()?.let { path ->
+                            createImageUrl(
+                                imageType = ImageType.BACKDROP,
+                                path = path,
+                                mediaInfo = null,
+                                // Don't need high resolution
+                                backdropWidth = 1280,
+                                backdropHeight = 720,
+                            )
+                        }
+                    Genre(
+                        id = it.id!!.toUUID(),
+                        name = it.name!!,
+                        imageUrl = imageUrl,
+                    )
+                }
 
         suspend fun upcomingMovies(page: Int = 1): List<DiscoverItem> =
             api.searchApi

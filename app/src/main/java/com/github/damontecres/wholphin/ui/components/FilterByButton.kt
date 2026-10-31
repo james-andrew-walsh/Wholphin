@@ -46,11 +46,13 @@ import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieStudiosFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverMovieYearFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStatusFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStudiosFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverYearRange
 import com.github.damontecres.wholphin.data.filter.FavoriteFilter
 import com.github.damontecres.wholphin.data.filter.FilterValueOption
 import com.github.damontecres.wholphin.data.filter.FilterVideoType
@@ -615,6 +617,10 @@ fun DiscoverFilterByButton(
                                     DiscoverRatingFilter -> {
                                         (currentValue as? Int) == value.value
                                     }
+
+                                    DiscoverMovieYearFilter -> {
+                                        currentValue == value.value
+                                    }
                                 }
                             }
                         val interactionSource = remember { MutableInteractionSource() }
@@ -700,6 +706,13 @@ fun DiscoverFilterByButton(
                                         DiscoverRatingFilter -> {
                                             filterOption.set(
                                                 value.value as? Int,
+                                                current,
+                                            )
+                                        }
+
+                                        DiscoverMovieYearFilter -> {
+                                            filterOption.set(
+                                                value.value as DiscoverYearRange,
                                                 current,
                                             )
                                         }
