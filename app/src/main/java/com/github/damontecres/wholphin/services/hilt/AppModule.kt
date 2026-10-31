@@ -16,6 +16,8 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import org.jellyfin.sdk.Jellyfin
 import org.jellyfin.sdk.android.androidDevice
@@ -28,7 +30,7 @@ import javax.inject.Qualifier
 import javax.inject.Singleton
 
 /**
- * An [OkHttpClient] that includes the user's access token when making requests
+ * An [OkHttpClient] that includes the user's access token when making requests to the current server
  */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
@@ -108,8 +110,10 @@ object AppModule {
         .newBuilder()
         .addInterceptor {
             val request = it.request()
+            val current = serverRepository.current.value
+            val isJellyfin = isJellyfinServerUrl(request.url, current?.server?.url)
             val newRequest =
-                serverRepository.current.value?.user?.accessToken?.let { token ->
+                current?.user?.accessToken?.takeIf { isJellyfin }?.let { token ->
                     request
                         .newBuilder()
                         .addHeader(
@@ -198,4 +202,17 @@ object DeviceModule {
     fun deviceInfo(
         @ApplicationContext context: Context,
     ): DeviceInfo = androidDevice(context)
+}
+
+/**
+ * Whether [requestUrl] has the same host and port as [serverUrl], ignoring the scheme
+ *
+ * The access token must only be sent when this is true. Returns false if [serverUrl] is null or can't be parsed.
+ */
+fun isJellyfinServerUrl(
+    requestUrl: HttpUrl,
+    serverUrl: String?,
+): Boolean {
+    val server = serverUrl?.toHttpUrlOrNull() ?: return false
+    return requestUrl.host == server.host && requestUrl.port == server.port
 }

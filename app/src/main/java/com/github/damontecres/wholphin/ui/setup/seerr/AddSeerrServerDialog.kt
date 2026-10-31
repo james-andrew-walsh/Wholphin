@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.SeerrAuthMethod
 import com.github.damontecres.wholphin.ui.components.BasicDialog
@@ -88,11 +89,11 @@ fun ChooseSeerrLoginType(
             fromLongClick = false,
             title = stringResource(R.string.seerr_login),
             items =
-                listOf(
+                listOfNotNull(
                     DialogItem(
                         text = stringResource(R.string.api_key),
                         onClick = { onChoose.invoke(SeerrAuthMethod.API_KEY) },
-                    ),
+                    ).takeIf { BuildConfig.SEERR_API_KEY_AUTH_ENABLED },
                     DialogItem(
                         text = stringResource(R.string.seerr_jellyfin_user),
                         onClick = { onChoose.invoke(SeerrAuthMethod.JELLYFIN) },

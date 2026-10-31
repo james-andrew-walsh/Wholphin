@@ -165,6 +165,7 @@ configure<ApplicationExtension> {
         val featureExternalPlayer = "EXTERNAL_PLAYER_ENABLED"
         val featureRemoteTrailers = "REMOTE_TRAILERS_ENABLED"
         val featureUpstreamNetwork = "UPSTREAM_NETWORK_ENABLED"
+        val featureSeerrApiKeyAuth = "SEERR_API_KEY_AUTH_ENABLED"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
 
@@ -194,6 +195,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureExternalPlayer, true)
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
+            setFeatureFlag(featureSeerrApiKeyAuth, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("appstore") {
@@ -205,6 +207,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureExternalPlayer, true)
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
+            setFeatureFlag(featureSeerrApiKeyAuth, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("firetv") {
@@ -216,6 +219,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureExternalPlayer, true)
             setFeatureFlag(featureRemoteTrailers, true)
             setFeatureFlag(featureUpstreamNetwork, true)
+            setFeatureFlag(featureSeerrApiKeyAuth, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("ourflix") {
@@ -230,6 +234,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureExternalPlayer, false)
             setFeatureFlag(featureRemoteTrailers, false)
             setFeatureFlag(featureUpstreamNetwork, false)
+            setFeatureFlag(featureSeerrApiKeyAuth, false)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // Build type signing configs win over this, so debug keeps the debug key
             signingConfig = signingConfigs.findByName("ourflix")
