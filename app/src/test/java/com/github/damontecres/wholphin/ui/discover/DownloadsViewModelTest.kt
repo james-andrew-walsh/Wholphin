@@ -48,6 +48,7 @@ import org.jellyfin.sdk.model.api.ImageType
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -595,6 +596,142 @@ class DownloadsViewModelTest {
             assertFalse(viewModel.state.value.loadMoreFailed)
             assertFalse(viewModel.state.value.loadingMore)
             coVerify(exactly = 4) {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    private fun TestScope.openedPage(vararg requests: MediaRequest): DownloadsViewModel {
+        requests(*requests)
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+        viewModel.onResume()
+        advanceUntilIdle()
+        return viewModel
+    }
+
+    @Test
+    fun `opening the page doesn't fetch the requests twice`() =
+        runTest(testDispatcher) {
+            openedPage(request(1))
+
+            coVerify(exactly = 1) {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `coming back adds new requests to the top`() =
+        runTest(testDispatcher) {
+            media(1)
+            media(2)
+            val viewModel = openedPage(request(2), request(1))
+            val existing = viewModel.rows()
+            movieFetches.clear()
+
+            media(3)
+            requests(request(3), request(2), request(1))
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            assertEquals(listOf(3, 2, 1), viewModel.rows().map { it.requestId })
+            assertEquals(existing, viewModel.rows().drop(1))
+            assertEquals(3, viewModel.state.value.fetched)
+            // A page of rows costs a lot on weak Wi-Fi, only the new one is fetched
+            assertEquals(listOf(3), movieFetches)
+            coVerify(exactly = 2) {
+                requestApi.requestGet(
+                    take = DOWNLOADS_PAGE_SIZE,
+                    skip = 0,
+                    filter = any(),
+                    sort = any(),
+                    sortDirection = any(),
+                    requestedBy = USER_ID,
+                    mediaType = any(),
+                )
+            }
+        }
+
+    @Test
+    fun `coming back with nothing new changes nothing`() =
+        runTest(testDispatcher) {
+            media(1)
+            val viewModel = openedPage(request(1))
+            val before = viewModel.state.value
+            movieFetches.clear()
+
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            assertSame(before, viewModel.state.value)
+            assertEquals(emptyList<Int>(), movieFetches)
+            coVerify(exactly = 2) {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `failing to fetch on coming back keeps the rows`() =
+        runTest(testDispatcher) {
+            media(1)
+            val viewModel = openedPage(request(1))
+            val before = viewModel.state.value
+
+            coEvery {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            } throws IOException("offline")
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            assertSame(before, viewModel.state.value)
+        }
+
+    @Test
+    fun `resuming again while fetching only fetches once`() =
+        runTest(testDispatcher) {
+            media(1)
+            val viewModel = openedPage(request(1))
+
+            viewModel.onResume()
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            coVerify(exactly = 2) {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `coming back to a failed load leaves the retry to the user`() =
+        runTest(testDispatcher) {
+            coEvery {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            } throws IOException("offline")
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+            viewModel.onResume()
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.rows is DataLoadingState.Error)
+            coVerify(exactly = 1) {
+                requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
+            }
+        }
+
+    @Test
+    fun `the timer never fetches new requests`() =
+        runTest(testDispatcher) {
+            media(1)
+            val viewModel = openedPage(request(1))
+
+            media(2)
+            requests(request(2), request(1))
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(60_001)
+            job.cancelAndJoin()
+
+            assertEquals(listOf(1), viewModel.rows().map { it.requestId })
+            coVerify(exactly = 1) {
                 requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
             }
         }

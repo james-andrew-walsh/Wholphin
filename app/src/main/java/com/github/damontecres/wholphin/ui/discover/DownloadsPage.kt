@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
@@ -180,7 +181,9 @@ class DownloadsViewModel
         private val limiter = Semaphore(MAX_CONCURRENT_REQUESTS)
         private val reloads = MutableStateFlow(0)
         private var loadMoreJob: Job? = null
+        private var newRequestsJob: Job? = null
         private var refreshStart = 0
+        private var resumed = false
 
         @Volatile
         private var userId: Int? = null
@@ -204,6 +207,7 @@ class DownloadsViewModel
 
         private suspend fun load(userId: Int?) {
             loadMoreJob?.cancel()
+            newRequestsJob?.cancel()
             this.userId = userId
             _state.value = DownloadsState(rows = DataLoadingState.Loading)
             if (userId == null) {
@@ -273,6 +277,47 @@ class DownloadsViewModel
         }
 
         /**
+         * Pick up requests made since the page was last showing
+         *
+         * This view model stays alive under pages opened from the list, so nothing else fetches
+         * them. The first resume is the page opening, which [load] already covers.
+         */
+        fun onResume() {
+            val firstResume = !resumed
+            resumed = true
+            val userId = userId
+            if (firstResume || userId == null || newRequestsJob?.isActive == true) return
+            if (_state.value.rows !is DataLoadingState.Success) return
+            newRequestsJob =
+                viewModelScope.launchIO {
+                    try {
+                        addNewRequests(userId)
+                    } catch (ex: CancellationException) {
+                        throw ex
+                    } catch (ex: Exception) {
+                        Timber.w(ex, "Error fetching new downloads")
+                    }
+                }
+        }
+
+        private suspend fun addNewRequests(userId: Int) {
+            val known = _state.value.rows.successValue.orEmpty().map { it.requestId }.toSet()
+            val requests = fetchRequests(userId, 0).results.orEmpty().filter { it.id !in known }
+            if (requests.isEmpty()) return
+            val newRows = createRows(requests)
+            _state.update { current ->
+                val rows = current.rows.successValue ?: return@update current
+                val added = newRows.filter { new -> rows.none { it.requestId == new.requestId } }
+                if (added.isEmpty()) return@update current
+                current.copy(
+                    rows = DataLoadingState.Success(added + rows),
+                    // These moved the rows already fetched along by as many places
+                    fetched = current.fetched + added.size,
+                )
+            }
+        }
+
+        /**
          * Keep the rows up to date for as long as the caller stays active
          *
          * The caller scopes this to the page being visible. Returns if there is nothing to refresh.
@@ -323,25 +368,11 @@ class DownloadsViewModel
             userId: Int,
             skip: Int,
         ): DownloadsResult {
-            val response =
-                seerrService.api.requestApi.requestGet(
-                    take = DOWNLOADS_PAGE_SIZE,
-                    skip = skip,
-                    sort = RequestApi.SortRequestGet.ADDED,
-                    sortDirection = RequestApi.SortDirectionRequestGet.DESC,
-                    requestedBy = userId,
-                    mediaType = RequestApi.MediaTypeRequestGet.MOVIE,
-                )
+            val response = fetchRequests(userId, skip)
             val requests = response.results.orEmpty()
-            val rows =
-                coroutineScope {
-                    requests
-                        .map { request -> async { limiter.withPermit { createRow(request) } } }
-                        .awaitAll()
-                }.filterNotNull()
             val fetched = skip + requests.size
             return DownloadsResult(
-                rows = rows,
+                rows = createRows(requests),
                 fetched = fetched,
                 hasMore =
                     hasMoreDownloads(
@@ -352,6 +383,25 @@ class DownloadsViewModel
                     ),
             )
         }
+
+        private suspend fun fetchRequests(
+            userId: Int,
+            skip: Int,
+        ) = seerrService.api.requestApi.requestGet(
+            take = DOWNLOADS_PAGE_SIZE,
+            skip = skip,
+            sort = RequestApi.SortRequestGet.ADDED,
+            sortDirection = RequestApi.SortDirectionRequestGet.DESC,
+            requestedBy = userId,
+            mediaType = RequestApi.MediaTypeRequestGet.MOVIE,
+        )
+
+        private suspend fun createRows(requests: List<MediaRequest>): List<DownloadRow> =
+            coroutineScope {
+                requests
+                    .map { request -> async { limiter.withPermit { createRow(request) } } }
+                    .awaitAll()
+            }.filterNotNull()
 
         private suspend fun createRow(request: MediaRequest): DownloadRow? {
             val tmdbId = request.media?.tmdbId
@@ -461,6 +511,11 @@ fun DownloadsPage(
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResume()
+        onPauseOrDispose { }
+    }
 
     // Leaving the page or the app cancels this, so nothing is fetched unless it can be seen
     val refreshing = state.refreshing
