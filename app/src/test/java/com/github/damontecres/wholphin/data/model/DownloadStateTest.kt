@@ -496,4 +496,34 @@ class DownloadStateTest {
         assertEquals("Some.Release", item.title)
         assertEquals("ABC123", item.downloadId)
     }
+
+    @Test
+    fun `the download's ID comes along while it is going through the queue`() {
+        listOf("downloading", "queued", "completed").forEach {
+            val status = progress(queue = listOf(DownloadingItem(status = it, downloadId = "ABC123")))
+            assertEquals(it, "ABC123", status.downloadId)
+        }
+    }
+
+    @Test
+    fun `a failed download has no ID to follow`() {
+        val status = progress(queue = listOf(DownloadingItem(status = "failed", downloadId = "ABC123")))
+
+        assertEquals(DownloadState.FAILED, status.state)
+        assertNull(status.downloadId)
+    }
+
+    @Test
+    fun `the ID comes from the entry that sets the state`() {
+        val status =
+            progress(
+                queue =
+                    listOf(
+                        DownloadingItem(status = "failed", downloadId = "OLD"),
+                        DownloadingItem(status = "downloading", downloadId = "NEW"),
+                    ),
+            )
+
+        assertEquals("NEW", status.downloadId)
+    }
 }

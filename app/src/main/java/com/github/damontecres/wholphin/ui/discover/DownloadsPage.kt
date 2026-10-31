@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -54,6 +55,7 @@ import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.api.seerr.RequestApi
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
@@ -68,6 +70,7 @@ import com.github.damontecres.wholphin.data.model.downloadPercent
 import com.github.damontecres.wholphin.data.model.downloadProgress
 import com.github.damontecres.wholphin.data.model.downloadRefreshDelay
 import com.github.damontecres.wholphin.data.model.hasMoreDownloads
+import com.github.damontecres.wholphin.data.model.isDownloadHash
 import com.github.damontecres.wholphin.data.model.keepsRefreshing
 import com.github.damontecres.wholphin.data.model.nextRefreshBatch
 import com.github.damontecres.wholphin.data.model.seenInQueue
@@ -194,6 +197,29 @@ internal fun focusedRowIndex(
 ): Int {
     val index = rows.indexOfFirst { it.requestId == focusedRequestId }
     return if (index >= 0) index else restoredRow.coerceAtMost(rows.lastIndex)
+}
+
+/**
+ * The detail page for a row, or null if it has no live download to show
+ *
+ * A row can miss out because Seerr only reads the start of the queue, so it has no ID for the rest.
+ * Radarr's ID is only a hash for torrents, and a row without its details has no movie page.
+ */
+internal fun detailDestination(
+    row: DownloadRow,
+    enabled: Boolean = BuildConfig.DOWNLOADS_PAGE_ENABLED,
+): Destination.DownloadDetail? {
+    val downloadId = row.progress.downloadId
+    val item = row.item
+    if (!enabled || !row.progress.state.active || item == null) return null
+    if (downloadId == null || !isDownloadHash(downloadId)) return null
+    return Destination.DownloadDetail(
+        downloadId = downloadId,
+        tmdbId = row.tmdbId,
+        is4k = row.is4k,
+        progress = row.progress,
+        item = item,
+    )
 }
 
 private data class DownloadsResult(
@@ -541,11 +567,13 @@ class DownloadsViewModel
         }
 
         /**
-         * A row that is ready goes to the Jellyfin item, any other to its Discover page
+         * A live download goes to its details, a row that is ready goes to the Jellyfin item and any
+         * other to its Discover page
          */
         fun open(row: DownloadRow) {
             val destination =
-                row.jellyfinItemId?.let { Destination.MediaItem(itemId = it, type = BaseItemKind.MOVIE) }
+                detailDestination(row)
+                    ?: row.jellyfinItemId?.let { Destination.MediaItem(itemId = it, type = BaseItemKind.MOVIE) }
                     ?: row.item?.let { Destination.DiscoveredItem(it) }
             destination?.let(navigationManager::navigateTo)
         }
@@ -850,17 +878,18 @@ private fun DownloadRowCard(
 }
 
 @Composable
-private fun DownloadProgressBar(
+internal fun DownloadProgressBar(
     fraction: Float,
     modifier: Modifier = Modifier,
+    height: Dp = 4.dp,
 ) {
     val color = LocalContentColor.current
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
+                .height(height)
+                .clip(RoundedCornerShape(height / 2))
                 .background(color.copy(alpha = 0.25f)),
     ) {
         Box(
@@ -874,7 +903,7 @@ private fun DownloadProgressBar(
 }
 
 @Composable
-private fun DownloadProgressText(
+internal fun DownloadProgressText(
     progress: DownloadProgress,
     modifier: Modifier = Modifier,
 ) {
@@ -897,7 +926,7 @@ private fun DownloadProgressText(
 }
 
 @get:StringRes
-private val DownloadState.stringRes: Int
+internal val DownloadState.stringRes: Int
     get() =
         when (this) {
             DownloadState.PENDING_APPROVAL -> R.string.download_state_pending

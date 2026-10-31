@@ -7,6 +7,7 @@ import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.CollectionFolderFilter
 import com.github.damontecres.wholphin.data.model.DiscoverItem
+import com.github.damontecres.wholphin.data.model.DownloadProgress
 import com.github.damontecres.wholphin.data.model.GetItemsFilter
 import com.github.damontecres.wholphin.data.model.HomeRowConfig
 import com.github.damontecres.wholphin.preferences.PlayerBackend
@@ -150,6 +151,22 @@ sealed class Destination(
 
     @Serializable
     data object Downloads : Destination(false)
+
+    /**
+     * @param downloadId the download client's ID from Seerr's queue
+     * @param progress what Seerr said when the page was opened, shown until there is something better
+     */
+    @Serializable
+    data class DownloadDetail(
+        val downloadId: String,
+        val tmdbId: Int,
+        val is4k: Boolean,
+        val progress: DownloadProgress,
+        val item: DiscoverItem,
+    ) : Destination(true) {
+        // This goes into the logs and crash reports, which don't need what is being downloaded
+        override fun toString(): String = "DownloadDetail(tmdbId=$tmdbId, is4k=$is4k)"
+    }
 
     @Serializable
     data class DiscoveredItem(

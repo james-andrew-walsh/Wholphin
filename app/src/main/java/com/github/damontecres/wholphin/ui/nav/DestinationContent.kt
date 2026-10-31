@@ -42,6 +42,7 @@ import com.github.damontecres.wholphin.ui.detail.series.SeriesDetails
 import com.github.damontecres.wholphin.ui.detail.series.SeriesOverview
 import com.github.damontecres.wholphin.ui.discover.DiscoverPage
 import com.github.damontecres.wholphin.ui.discover.DiscoverRequestGrid
+import com.github.damontecres.wholphin.ui.discover.DownloadDetailPage
 import com.github.damontecres.wholphin.ui.discover.DownloadsPage
 import com.github.damontecres.wholphin.ui.main.HomePage
 import com.github.damontecres.wholphin.ui.main.settings.HomeSettingsPage
@@ -388,6 +389,10 @@ fun DestinationContent(
         Destination.Downloads -> {
             LaunchedEffect(Unit) { onClearBackdrop.invoke() }
             DownloadsPage(modifier = modifier)
+        }
+
+        is Destination.DownloadDetail -> {
+            DownloadDetailPage(destination = destination, modifier = modifier)
         }
 
         is Destination.DiscoveredItem -> {

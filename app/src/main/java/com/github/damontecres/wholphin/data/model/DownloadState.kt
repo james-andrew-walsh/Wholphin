@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.data.model
 
 import com.github.damontecres.wholphin.api.seerr.model.DownloadingItem
+import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import kotlin.math.ceil
@@ -35,11 +36,14 @@ enum class DownloadState(
  * A [DownloadState] with what Seerr supplied about it, nothing here is ever estimated locally
  *
  * @param fraction how much is downloaded, from 0 to 1
+ * @param downloadId the download client's ID, only set while the download is going through the queue
  */
+@Serializable
 data class DownloadProgress(
     val state: DownloadState,
     val fraction: Float? = null,
     val timeLeft: Duration? = null,
+    val downloadId: String? = null,
 )
 
 // Best entry first: a retried grab can leave a failed entry beside the new download
@@ -107,18 +111,7 @@ fun downloadProgress(
         val finished = !(failed && requestStatus == RequestStatus.APPROVED)
         return DownloadProgress(if (finished) DownloadState.UNAVAILABLE else DownloadState.FAILED)
     }
-    if (entry != null) {
-        val state = queueState(entry)
-        return if (state == DownloadState.DOWNLOADING || state == DownloadState.QUEUED) {
-            DownloadProgress(
-                state = state,
-                fraction = downloadFraction(entry.propertySize, entry.sizeLeft),
-                timeLeft = downloadTimeLeft(entry.timeLeft, entry.estimatedCompletionTime, now),
-            )
-        } else {
-            DownloadProgress(state)
-        }
-    }
+    if (entry != null) return queueProgress(entry, now)
     val available =
         mediaStatus == SeerrAvailability.AVAILABLE ||
             mediaStatus == SeerrAvailability.PARTIALLY_AVAILABLE
@@ -131,6 +124,26 @@ fun downloadProgress(
     return DownloadProgress(
         if (seenInQueue || available) DownloadState.PREPARING else DownloadState.SEARCHING,
     )
+}
+
+/**
+ * What a Seerr queue entry says about a download
+ */
+fun queueProgress(
+    entry: DownloadingItem,
+    now: Instant,
+): DownloadProgress {
+    val state = queueState(entry)
+    return if (state == DownloadState.DOWNLOADING || state == DownloadState.QUEUED) {
+        DownloadProgress(
+            state = state,
+            fraction = downloadFraction(entry.propertySize, entry.sizeLeft),
+            timeLeft = downloadTimeLeft(entry.timeLeft, entry.estimatedCompletionTime, now),
+            downloadId = entry.downloadId,
+        )
+    } else {
+        DownloadProgress(state, downloadId = entry.downloadId.takeIf { state.active })
+    }
 }
 
 /**
