@@ -2,4 +2,7 @@
 <resources>
     <string name="app_name" translatable="false">Ourflix</string>
     <string name="app_name_long" translatable="false">Ourflix</string>
+    <string name="updated_toast">Ourflix updated to %s</string>
+    <string name="display_preset_default">Ourflix Default</string>
+    <string name="display_preset_compact">Ourflix Compact</string>
 </resources>
