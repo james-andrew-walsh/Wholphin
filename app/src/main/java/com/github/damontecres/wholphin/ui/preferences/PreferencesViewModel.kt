@@ -11,6 +11,7 @@ import androidx.core.net.toUri
 import androidx.datastore.core.DataStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.JellyfinUser
@@ -149,7 +150,14 @@ class PreferencesViewModel
             viewModelScope.launchIO {
                 releaseNotes.update { DataLoadingState.Loading }
                 try {
-                    val release = updateChecker.getRelease(updateChecker.getInstalledVersion())
+                    val version = updateChecker.getInstalledVersion()
+                    val release =
+                        if (BuildConfig.UPSTREAM_NETWORK_ENABLED) {
+                            updateChecker.getRelease(version)
+                        } else {
+                            // Release notes live on GitHub, so show just the installed version
+                            Release(version, null, null, null, emptyList())
+                        }
                     if (release != null) {
                         releaseNotes.update { DataLoadingState.Success(release) }
                     } else {

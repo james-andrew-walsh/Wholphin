@@ -164,6 +164,7 @@ configure<ApplicationExtension> {
         val featureTvChannels = "TV_CHANNELS_ENABLED"
         val featureExternalPlayer = "EXTERNAL_PLAYER_ENABLED"
         val featureRemoteTrailers = "REMOTE_TRAILERS_ENABLED"
+        val featureUpstreamNetwork = "UPSTREAM_NETWORK_ENABLED"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
 
@@ -192,6 +193,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureTvChannels, true)
             setFeatureFlag(featureExternalPlayer, true)
             setFeatureFlag(featureRemoteTrailers, true)
+            setFeatureFlag(featureUpstreamNetwork, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("appstore") {
@@ -202,6 +204,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureTvChannels, true)
             setFeatureFlag(featureExternalPlayer, true)
             setFeatureFlag(featureRemoteTrailers, true)
+            setFeatureFlag(featureUpstreamNetwork, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("firetv") {
@@ -212,6 +215,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureTvChannels, true)
             setFeatureFlag(featureExternalPlayer, true)
             setFeatureFlag(featureRemoteTrailers, true)
+            setFeatureFlag(featureUpstreamNetwork, true)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("ourflix") {
@@ -225,6 +229,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureTvChannels, false)
             setFeatureFlag(featureExternalPlayer, false)
             setFeatureFlag(featureRemoteTrailers, false)
+            setFeatureFlag(featureUpstreamNetwork, false)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // Build type signing configs win over this, so debug keeps the debug key
             signingConfig = signingConfigs.findByName("ourflix")

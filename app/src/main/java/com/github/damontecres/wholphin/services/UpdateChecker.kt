@@ -156,6 +156,11 @@ class UpdateChecker
             }
 
         private fun getRelease(request: Request): Release? {
+            // All release lookups come through here, including a custom update URL
+            if (!BuildConfig.UPSTREAM_NETWORK_ENABLED) {
+                Timber.v("Upstream network disabled, skipping release lookup")
+                return null
+            }
             return okHttpClient.newCall(request).execute().use {
                 if (it.isSuccessful) {
                     val result = Json.parseToJsonElement(it.body.string())

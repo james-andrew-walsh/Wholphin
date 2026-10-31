@@ -1,11 +1,21 @@
 package com.github.damontecres.wholphin.test
 
+import com.github.damontecres.wholphin.BuildConfig
+import com.github.damontecres.wholphin.services.UpdateChecker
 import com.github.damontecres.wholphin.services.getDownloadUrl
+import com.github.damontecres.wholphin.util.Version
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import okhttp3.Call
+import okhttp3.OkHttpClient
+import okhttp3.Response
 import org.junit.Assert
 import org.junit.Before
 import org.junit.Test
@@ -86,4 +96,24 @@ class TestUpdateChecker {
             Assert.assertNull(url)
         }
     }
+
+    @Test
+    fun `Release lookups follow the upstream network flag`() =
+        runTest {
+            val failedResponse = mockk<Response>(relaxed = true)
+            every { failedResponse.isSuccessful } returns false
+            val call = mockk<Call>()
+            every { call.execute() } returns failedResponse
+            val client = mockk<OkHttpClient>()
+            every { client.newCall(any()) } returns call
+            val checker = UpdateChecker(mockk(), client)
+
+            Assert.assertNull(checker.getRelease(Version.fromString("1.0.9")))
+            Assert.assertNull(
+                checker.getLatestRelease("https://api.github.com/repos/damontecres/Wholphin/releases/latest"),
+            )
+
+            val expectedCalls = if (BuildConfig.UPSTREAM_NETWORK_ENABLED) 2 else 0
+            verify(exactly = expectedCalls) { client.newCall(any()) }
+        }
 }
