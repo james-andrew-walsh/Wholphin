@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.util
 
 import androidx.annotation.StringRes
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.api.seerr.SearchApi
 import com.github.damontecres.wholphin.api.seerr.model.MovieResult
@@ -35,11 +36,23 @@ class DiscoverRequestPager<T>(
     ): QueryResult<DiscoverItem> {
         val result = requestHandler.execute(api, pageNumber + 1) // Seerr pages are 1-indexed
         val transformed = result.items.map { transform.invoke(it) }
-        return QueryResult(transformed, result.totalCount)
+        return QueryResult(transformed, capSeerrTotal(result.totalCount))
     }
 }
 
 const val SEERR_PAGE_SIZE = 20
+
+/** TMDB serves 500 pages at most, and Seerr returns an error for any page past that */
+const val SEERR_MAX_RESULTS = 500 * SEERR_PAGE_SIZE
+
+/**
+ * Limit a reported total to the results that can actually be fetched, so that a grid ends cleanly
+ * instead of requesting a page that fails. TMDB also caps the total it reports at 20,001.
+ */
+fun capSeerrTotal(
+    total: Int?,
+    enabled: Boolean = BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED,
+): Int? = if (enabled) total?.coerceAtMost(SEERR_MAX_RESULTS) else total
 
 enum class DiscoverRequestType(
     @param:StringRes val stringRes: Int,

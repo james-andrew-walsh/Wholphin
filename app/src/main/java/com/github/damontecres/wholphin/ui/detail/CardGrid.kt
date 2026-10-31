@@ -115,6 +115,7 @@ fun <T : CardGridItem> CardGrid(
     positionCallback: ((columns: Int, position: Int) -> Unit)? = null,
     cardContent: @Composable (GridItemDetails<T>) -> Unit,
     columns: Int = 6,
+    totalLabel: String? = null,
     spacing: Dp = 16.dp,
     bringIntoViewSpec: BringIntoViewSpec = LocalBringIntoViewSpec.current,
 ) {
@@ -420,7 +421,7 @@ fun <T : CardGridItem> CardGrid(
                             Text(
                                 modifier = Modifier.padding(4.dp),
                                 color = MaterialTheme.colorScheme.onBackground,
-                                text = "$index / ${pager.size}",
+                                text = "$index / ${totalLabel ?: pager.size}",
                             )
                         }
                     }

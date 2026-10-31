@@ -45,6 +45,7 @@ import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.tryRequestFocus
+import com.github.damontecres.wholphin.util.SEERR_MAX_RESULTS
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.DiscoverMovieRequestHandler
 import com.github.damontecres.wholphin.util.DiscoverRequestPager
@@ -452,6 +453,10 @@ fun DiscoverRequestGrid(
                         )
                     },
                     columns = 6,
+                    totalLabel =
+                        "%,d+".format(SEERR_MAX_RESULTS).takeIf {
+                            BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED && s.data.size >= SEERR_MAX_RESULTS
+                        },
                     positionCallback = { columns, index ->
                         showHeader = index < columns
                         positionCallback.invoke(columns, index)
