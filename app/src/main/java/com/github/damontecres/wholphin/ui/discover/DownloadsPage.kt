@@ -140,7 +140,8 @@ data class DownloadRow(
     val seenInQueue: Boolean = false,
     val progress: DownloadProgress = DownloadProgress(DownloadState.SEARCHING),
 ) {
-    val refreshing: Boolean get() = keepsRefreshing(progress.state, requestStatus)
+    // A row without its details needs another fetch, even if its state is final
+    val refreshing: Boolean get() = item == null || keepsRefreshing(progress.state, requestStatus)
 }
 
 data class DownloadsState(
@@ -280,9 +281,9 @@ class DownloadsViewModel
         }
 
         /**
-         * Refresh the rows which can still change
+         * Refresh the rows which can still change or are missing their details
          *
-         * @return whether any were refreshed or null if none can change
+         * @return whether any were refreshed or null if none need it
          */
         private suspend fun refreshRows(): Boolean? {
             val rows = _state.value.rows.successValue.orEmpty().filter { it.refreshing }

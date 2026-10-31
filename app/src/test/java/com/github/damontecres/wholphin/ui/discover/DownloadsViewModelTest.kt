@@ -333,6 +333,48 @@ class DownloadsViewModelTest {
         }
 
     @Test
+    fun `a finished row is refreshed until it has its details`() =
+        runTest(testDispatcher) {
+            media(1, RequestStatus.DECLINED)
+            requests(request(1, status = RequestStatus.DECLINED))
+            movieFailure = IOException("offline")
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(null, viewModel.rows().single().item)
+            assertEquals(DownloadState.DECLINED, viewModel.rowState())
+            assertTrue(viewModel.state.value.refreshing)
+            movieFetches.clear()
+
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            assertEquals(1, movieFetches.size)
+            assertEquals(null, viewModel.rows().single().item)
+            assertTrue(viewModel.state.value.refreshing)
+            assertTrue(viewModel.state.value.refreshFailed)
+
+            // Failing still backs off, the next try is 30 seconds later instead of 15
+            movieFailure = null
+            advanceTimeBy(20_000)
+            assertEquals(1, movieFetches.size)
+            advanceTimeBy(10_001)
+            assertEquals(2, movieFetches.size)
+
+            assertEquals("Movie 1", viewModel.rows().single().item?.title)
+            assertEquals(DownloadState.DECLINED, viewModel.rowState())
+            assertFalse(viewModel.state.value.refreshing)
+            assertFalse(viewModel.state.value.refreshFailed)
+
+            viewModel.open(viewModel.rows().single())
+            verify { navigationManager.navigateTo(match { it is Destination.DiscoveredItem }) }
+
+            // Nothing is left to fetch, so the timer ends
+            advanceUntilIdle()
+            assertTrue(job.isCompleted)
+            assertEquals(2, movieFetches.size)
+        }
+
+    @Test
     fun `refresh updates a row from GET movie, never GET request`() =
         runTest(testDispatcher) {
             media(1)
