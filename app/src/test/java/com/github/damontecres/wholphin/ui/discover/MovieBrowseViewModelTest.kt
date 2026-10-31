@@ -185,7 +185,7 @@ class MovieBrowseViewModelTest {
         }
 
     @Test
-    fun `a failed row loads past itself so focus can't get stuck`() =
+    fun `a failed row also loads the rows past it`() =
         runTest(testDispatcher) {
             coEvery { seerrService.discoverMoviesBy(any(), any()) } coAnswers {
                 val filter = firstArg<DiscoverFilter>()

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -47,6 +48,7 @@ import com.github.damontecres.wholphin.ui.components.Genre
 import com.github.damontecres.wholphin.ui.components.HeaderUtils
 import com.github.damontecres.wholphin.ui.data.RowColumn
 import com.github.damontecres.wholphin.ui.detail.discover.getDiscoverRating
+import com.github.damontecres.wholphin.ui.ifElse
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.listToDotString
 import com.github.damontecres.wholphin.ui.main.HomePageHeader
@@ -159,7 +161,7 @@ class MovieBrowseViewModel
                     }
                 onResult(result)
                 if (result is DataLoadingState.Error) {
-                    // A failed row can't take focus, so also load past it or focus could get stuck
+                    // The rows below would otherwise wait for focus to reach the error, so load past it
                     ensureLoaded(index)
                 }
             }
@@ -279,11 +281,13 @@ fun MovieBrowsePage(
         viewModel.updateBackdrop(focusedItem)
     }
     var firstFocused by rememberSaveable { mutableStateOf(false) }
+    var rowsHaveFocus by remember { mutableStateOf(false) }
     val firstRow = rowItems[0]
     LaunchedEffect(firstRow) {
-        if (!firstFocused && firstRow is DataLoadingState.Success<*>) {
+        // Only a loading row has nothing to focus, a failed row has its error message's button
+        if (!firstFocused && (firstRow is DataLoadingState.Success<*> || firstRow is DataLoadingState.Error)) {
             firstFocused = focusRequesters.getOrNull(0)?.tryRequestFocus("discover") == true
-        } else if (firstFocused) {
+        } else if (firstFocused && !rowsHaveFocus) {
             focusRequesters.getOrNull(position.row)?.tryRequestFocus()
         }
     }
@@ -348,15 +352,19 @@ fun MovieBrowsePage(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 40.dp),
                 modifier =
                     Modifier
+                        .onFocusChanged { rowsHaveFocus = it.hasFocus }
                         .focusRestorer()
                         .fillMaxSize(),
             ) {
                 itemsIndexed(rows) { rowIndex, row ->
                     CompositionLocalProvider(LocalBringIntoViewSpec provides defaultBringIntoViewSpec) {
-                        val onGenreFocus = { index: Int ->
+                        val onRowFocus = { index: Int ->
+                            firstFocused = true
                             position = RowColumn(rowIndex, index)
                             positionCallback.invoke(position)
                         }
+                        // A failed row has no cards to report focus, only its error message's button
+                        val failedRowFocus = Modifier.onFocusChanged { if (it.hasFocus) onRowFocus(0) }
                         when (row) {
                             is MovieBrowseRow.Items -> {
                                 val shelf = row.shelf
@@ -372,10 +380,7 @@ fun MovieBrowsePage(
                                         viewModel.navigationManager.navigateTo(item.destination)
                                     },
                                     onLongClickItem = { _, _ -> },
-                                    onCardFocus = { index ->
-                                        position = RowColumn(rowIndex, index)
-                                        positionCallback.invoke(position)
-                                    },
+                                    onCardFocus = onRowFocus,
                                     focusRequester = focusRequesters[rowIndex],
                                     enableViewMore = true,
                                     onClickViewMore = {
@@ -391,7 +396,15 @@ fun MovieBrowsePage(
                                             ),
                                         )
                                     },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .ifElse(
+                                                rowItems[rowIndex] is DataLoadingState.Error,
+                                                Modifier
+                                                    .focusRequester(focusRequesters[rowIndex])
+                                                    .then(failedRowFocus),
+                                            ),
                                 )
                             }
 
@@ -417,8 +430,11 @@ fun MovieBrowsePage(
                                             ),
                                         )
                                     },
-                                    onCardFocus = onGenreFocus,
-                                    modifier = Modifier.focusRequester(focusRequesters[rowIndex]),
+                                    onCardFocus = onRowFocus,
+                                    modifier =
+                                        Modifier
+                                            .focusRequester(focusRequesters[rowIndex])
+                                            .ifElse(genres is DataLoadingState.Error, failedRowFocus),
                                 )
                             }
 
@@ -442,7 +458,7 @@ fun MovieBrowsePage(
                                             ),
                                         )
                                     },
-                                    onCardFocus = onGenreFocus,
+                                    onCardFocus = onRowFocus,
                                     modifier = Modifier.focusRequester(focusRequesters[rowIndex]),
                                 )
                             }
