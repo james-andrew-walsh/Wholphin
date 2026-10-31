@@ -12,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.await
 import androidx.work.workDataOf
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.ui.collectLatestIn
 import com.github.damontecres.wholphin.ui.launchIO
@@ -40,7 +41,8 @@ class TvProviderSchedulerService
 
         private val supportsTvProvider =
             // TODO <=25 has limited support
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            BuildConfig.TV_CHANNELS_ENABLED &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 
         init {

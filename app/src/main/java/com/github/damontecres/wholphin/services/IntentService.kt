@@ -2,6 +2,7 @@ package com.github.damontecres.wholphin.services
 
 import android.app.SearchManager
 import android.content.Intent
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.ui.detail.series.SeasonEpisodeIds
@@ -203,7 +204,7 @@ class IntentService
             const val INTENT_SERVER_ID = "serverId"
             const val INTENT_USER_ID = "userId"
 
-            const val ACTION_PLAYBACK = "com.github.damontecres.wholphin.PLAYBACK"
+            const val ACTION_PLAYBACK = BuildConfig.ACTION_PLAYBACK
         }
     }
 

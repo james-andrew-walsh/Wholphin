@@ -62,10 +62,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.intent.action.SEARCH" />
-                <action android:name="com.github.damontecres.wholphin.PLAYBACK" />
+                <action android:name="${playbackAction}" />
 
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="wholphin" />
+                <data android:scheme="${deepLinkScheme}" />
             </intent-filter>
         </activity>
 

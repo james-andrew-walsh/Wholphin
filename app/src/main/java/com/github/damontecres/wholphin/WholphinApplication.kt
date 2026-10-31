@@ -95,9 +95,9 @@ class WholphinApplication :
                 )
             dialog {
                 text =
-                    "Wholphin has crashed! Would you like to attempt to " +
+                    "${getString(R.string.app_name)} has crashed! Would you like to attempt to " +
                     "send a crash report to your Jellyfin server?"
-                title = "Wholphin Crash Report"
+                title = "${getString(R.string.app_name)} Crash Report"
                 positiveButtonText = "Send"
                 negativeButtonText = "Do not send"
             }

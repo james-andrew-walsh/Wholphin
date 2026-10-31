@@ -27,6 +27,13 @@ val shouldSign =
     ) { isCI, hasKey ->
         isCI && hasKey
     }
+val ourflixSigningProperties =
+    providers
+        .environmentVariable("OURFLIX_SIGNING_PROPERTIES")
+        .orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { file(it) }
+        ?.takeIf { it.isFile }
 val ffmpegModuleExists =
     providers.provider { project.file("libs/lib-decoder-ffmpeg-release.aar").exists() }
 val av1ModuleExists =
@@ -83,6 +90,24 @@ configure<ApplicationExtension> {
     }
 
     signingConfigs {
+        ourflixSigningProperties?.let { propertiesFile ->
+            create("ourflix") {
+                val properties = Properties()
+                propertiesFile.inputStream().use { properties.load(it) }
+                // A relative storeFile is relative to the properties file
+                storeFile =
+                    propertiesFile.resolveSibling(
+                        properties.getValue("storeFile").toString(),
+                    )
+                storePassword = properties.getValue("storePassword").toString()
+                keyAlias = properties.getValue("keyAlias").toString()
+                keyPassword = properties.getValue("keyPassword").toString()
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
         if (shouldSign.get()) {
             create("ci") {
                 file("ci.keystore").writeBytes(
@@ -136,6 +161,9 @@ configure<ApplicationExtension> {
         val featureLeanback = "leanback"
         val featureUpdate = "UPDATING_ENABLED"
         val featureDiscover = "DISCOVER_ENABLED"
+        val featureTvChannels = "TV_CHANNELS_ENABLED"
+        val upstreamScheme = "wholphin"
+        val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
 
         fun ProductFlavor.setFeatureFlag(
             name: String,
@@ -143,24 +171,53 @@ configure<ApplicationExtension> {
         ) {
             this.buildConfigField("boolean", name, "Boolean.parseBoolean(\"${enabled}\")")
         }
+
+        fun ProductFlavor.setDeepLink(
+            scheme: String,
+            playbackAction: String,
+        ) {
+            manifestPlaceholders +=
+                mapOf("deepLinkScheme" to scheme, "playbackAction" to playbackAction)
+            this.buildConfigField("String", "DEEP_LINK_SCHEME", "\"${scheme}\"")
+            this.buildConfigField("String", "ACTION_PLAYBACK", "\"${playbackAction}\"")
+        }
         create("default") {
             dimension = "version"
             isDefault = true
             manifestPlaceholders += mapOf(featureLeanback to false)
             setFeatureFlag(featureUpdate, true)
             setFeatureFlag(featureDiscover, true)
+            setFeatureFlag(featureTvChannels, true)
+            setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("appstore") {
             dimension = "version"
             manifestPlaceholders += mapOf(featureLeanback to true)
             setFeatureFlag(featureUpdate, false)
             setFeatureFlag(featureDiscover, true)
+            setFeatureFlag(featureTvChannels, true)
+            setDeepLink(upstreamScheme, upstreamPlaybackAction)
         }
         create("firetv") {
             dimension = "version"
             manifestPlaceholders += mapOf(featureLeanback to true)
             setFeatureFlag(featureUpdate, false)
             setFeatureFlag(featureDiscover, false)
+            setFeatureFlag(featureTvChannels, true)
+            setDeepLink(upstreamScheme, upstreamPlaybackAction)
+        }
+        create("ourflix") {
+            dimension = "version"
+            applicationId = "app.ourflix"
+            versionCode = 1
+            versionName = "0.1.0"
+            manifestPlaceholders += mapOf(featureLeanback to true)
+            setFeatureFlag(featureUpdate, false)
+            setFeatureFlag(featureDiscover, true)
+            setFeatureFlag(featureTvChannels, false)
+            setDeepLink("ourflix", "app.ourflix.PLAYBACK")
+            // Build type signing configs win over this, so debug keeps the debug key
+            signingConfig = signingConfigs.findByName("ourflix")
         }
     }
     compileOptions {
@@ -220,8 +277,9 @@ androidComponents {
                     output
                         .getFilter(FilterConfiguration.FilterType.ABI)
                         .let { if (it != null) "-${it.identifier}" else "" }
+                val appName = if (variant.flavorName == "ourflix") "Ourflix" else "Wholphin"
                 val outputFileName =
-                    "Wholphin-${variant.flavorName}-${variant.buildType}-${output.versionName.get()}-${output.versionCode.get()}$abi.apk"
+                    "$appName-${variant.flavorName}-${variant.buildType}-${output.versionName.get()}-${output.versionCode.get()}$abi.apk"
                 output.outputFileName = outputFileName
             }
     }
