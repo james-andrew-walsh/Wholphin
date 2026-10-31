@@ -119,6 +119,44 @@ class DownloadStateTest {
     }
 
     @Test
+    fun `a live download wins over deleted media`() {
+        val status =
+            progress(
+                requestStatus = RequestStatus.COMPLETED,
+                mediaStatus = SeerrAvailability.DELETED,
+                queue = listOf(queued("failed"), queued("downloading")),
+            )
+        assertEquals(DownloadState.DOWNLOADING, status.state)
+        assertEquals(0.75f, status.fraction)
+        assertEquals(10.minutes, status.timeLeft)
+        assertTrue(keepsRefreshing(status.state, RequestStatus.COMPLETED))
+    }
+
+    @Test
+    fun `deleted media without a live download stays unavailable`() {
+        listOf(null, emptyList<DownloadingItem>(), listOf(queued("failed"))).forEach {
+            val status =
+                progress(
+                    requestStatus = RequestStatus.COMPLETED,
+                    mediaStatus = SeerrAvailability.DELETED,
+                    queue = it,
+                )
+            assertEquals(it.toString(), DownloadState.UNAVAILABLE, status.state)
+        }
+    }
+
+    @Test
+    fun `blocklisted media ignores the queue`() {
+        assertEquals(
+            DownloadState.UNAVAILABLE,
+            progress(
+                mediaStatus = SeerrAvailability.BLOCKLISTED,
+                queue = listOf(queued("downloading")),
+            ).state,
+        )
+    }
+
+    @Test
     fun `a completed request isn't preparing unless the media is available`() {
         listOf(
             SeerrAvailability.UNKNOWN,

@@ -97,10 +97,12 @@ fun downloadProgress(
         RequestStatus.PENDING -> return DownloadProgress(DownloadState.PENDING_APPROVAL)
         else -> {}
     }
-    if (mediaStatus == SeerrAvailability.DELETED || mediaStatus == SeerrAvailability.BLOCKLISTED) {
+    if (mediaStatus == SeerrAvailability.BLOCKLISTED) return DownloadProgress(DownloadState.UNAVAILABLE)
+    val entry = queue?.minByOrNull { queueStatePriority.indexOf(queueState(it)) }
+    // Seerr keeps deleted media as deleted while Radarr grabs it again, so a live entry wins
+    if (mediaStatus == SeerrAvailability.DELETED && (entry == null || queueState(entry) == DownloadState.FAILED)) {
         return DownloadProgress(DownloadState.UNAVAILABLE)
     }
-    val entry = queue?.minByOrNull { queueStatePriority.indexOf(queueState(it)) }
     if (entry != null) {
         val state = queueState(entry)
         return if (state == DownloadState.DOWNLOADING || state == DownloadState.QUEUED) {
