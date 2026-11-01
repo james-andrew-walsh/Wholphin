@@ -51,6 +51,7 @@ import com.github.damontecres.wholphin.data.filter.DiscoverRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStatusFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverTvYearFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStudiosFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverYearRange
 import com.github.damontecres.wholphin.data.filter.FavoriteFilter
@@ -618,7 +619,9 @@ fun DiscoverFilterByButton(
                                         (currentValue as? Int) == value.value
                                     }
 
-                                    DiscoverMovieYearFilter -> {
+                                    DiscoverMovieYearFilter,
+                                    DiscoverTvYearFilter,
+                                    -> {
                                         currentValue == value.value
                                     }
                                 }
@@ -710,7 +713,9 @@ fun DiscoverFilterByButton(
                                             )
                                         }
 
-                                        DiscoverMovieYearFilter -> {
+                                        DiscoverMovieYearFilter,
+                                        DiscoverTvYearFilter,
+                                        -> {
                                             filterOption.set(
                                                 value.value as DiscoverYearRange,
                                                 current,

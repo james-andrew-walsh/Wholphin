@@ -8,12 +8,16 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.api.seerr.SearchApi
 import com.github.damontecres.wholphin.api.seerr.model.DiscoverMoviesGet200Response
+import com.github.damontecres.wholphin.api.seerr.model.DiscoverTvGet200Response
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieYearFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverSort
 import com.github.damontecres.wholphin.data.filter.DiscoverSortAndDirection
+import com.github.damontecres.wholphin.data.filter.DiscoverTvGenreFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverTvYearFilter
 import com.github.damontecres.wholphin.data.filter.browseMovieFilters
+import com.github.damontecres.wholphin.data.filter.browseTvFilters
 import com.github.damontecres.wholphin.data.filter.discoverMovieFilters
 import com.github.damontecres.wholphin.data.filter.discoverTvFilters
 import com.github.damontecres.wholphin.data.model.JellyfinUser
@@ -58,6 +62,12 @@ class DiscoverRequestViewModelTest {
             transform(state.value).also { state.value = it }
     }
 
+    private data class TvQuery(
+        val sortBy: String?,
+        val firstAirDateGte: String?,
+        val firstAirDateLte: String?,
+    )
+
     private data class MovieQuery(
         val genre: String?,
         val sortBy: String?,
@@ -78,6 +88,7 @@ class DiscoverRequestViewModelTest {
     private val userB = UUID.randomUUID()
 
     private val queries = mutableListOf<MovieQuery>()
+    private val tvQueries = mutableListOf<TvQuery>()
 
     private val votesSort = DiscoverSortAndDirection(DiscoverSort.TMDB_VOTE, SortOrder.ASCENDING)
 
@@ -116,6 +127,36 @@ class DiscoverRequestViewModelTest {
             queries.add(MovieQuery(arg(2), arg(6), arg(7), arg(8)))
             DiscoverMoviesGet200Response(totalResults = 0, results = emptyList())
         }
+        coEvery {
+            searchApi.discoverTvGet(
+                page = any(),
+                language = any(),
+                genre = any(),
+                network = any(),
+                keywords = any(),
+                excludeKeywords = any(),
+                sortBy = any(),
+                firstAirDateGte = any(),
+                firstAirDateLte = any(),
+                withRuntimeGte = any(),
+                withRuntimeLte = any(),
+                voteAverageGte = any(),
+                voteAverageLte = any(),
+                voteCountGte = any(),
+                voteCountLte = any(),
+                watchRegion = any(),
+                watchProviders = any(),
+                status = any(),
+                certification = any(),
+                certificationGte = any(),
+                certificationLte = any(),
+                certificationCountry = any(),
+                certificationMode = any(),
+            )
+        } coAnswers {
+            tvQueries.add(TvQuery(arg(6), arg(7), arg(8)))
+            DiscoverTvGet200Response(totalResults = 0, results = emptyList())
+        }
     }
 
     @After
@@ -133,6 +174,7 @@ class DiscoverRequestViewModelTest {
         initialFilter: DiscoverFilter = DiscoverFilter(),
         persistKey: String? = KEY,
         keyValueService: KeyValueService = this.keyValueService,
+        type: DiscoverRequestType = DiscoverRequestType.DISCOVER_MOVIES,
     ) = DiscoverRequestViewModel(
         context = mockk(relaxed = true),
         seerrService = mockk(relaxed = true),
@@ -141,7 +183,7 @@ class DiscoverRequestViewModelTest {
         filterOptionCache = mockk(relaxed = true),
         keyValueService = keyValueService,
         serverRepository = serverRepository,
-        type = DiscoverRequestType.DISCOVER_MOVIES,
+        type = type,
         startIndex = 0,
         initialFilter = initialFilter,
         persistKey = persistKey,
@@ -161,6 +203,70 @@ class DiscoverRequestViewModelTest {
 
             assertEquals("vote_average.asc", queries.single().sortBy)
             assertEquals(votesSort, viewModel.state.value.sortAndDirection)
+        }
+
+    @Test
+    fun `a TV row's sort and dates reach its grid`() =
+        runTest(testDispatcher) {
+            val newest = DiscoverSortAndDirection(DiscoverSort.RELEASE_DATE, SortOrder.DESCENDING)
+            val viewModel =
+                createViewModel(
+                    initialFilter =
+                        DiscoverFilter(
+                            sortBy = newest,
+                            firstAirDateGte = "2026-05-03",
+                            firstAirDateLte = "2026-10-30",
+                        ),
+                    persistKey = null,
+                    type = DiscoverRequestType.DISCOVER_TV,
+                )
+            advanceUntilIdle()
+
+            assertEquals(TvQuery("first_air_date.desc", "2026-05-03", "2026-10-30"), tvQueries.single())
+            assertEquals(newest, viewModel.state.value.sortAndDirection)
+        }
+
+    @Test
+    fun `a TV grid without a sort stays on the default`() =
+        runTest(testDispatcher) {
+            createViewModel(persistKey = null, type = DiscoverRequestType.DISCOVER_TV)
+            advanceUntilIdle()
+
+            assertEquals(TvQuery("popularity.desc", null, null), tvQueries.single())
+        }
+
+    @Test
+    fun `a pinned TV decade does not offer the year filter`() =
+        runTest(testDispatcher) {
+            val viewModel =
+                createViewModel(
+                    initialFilter = DiscoverFilter(firstAirDateGte = "1990-01-01", firstAirDateLte = "1999-12-31"),
+                    persistKey = null,
+                    type = DiscoverRequestType.DISCOVER_TV,
+                )
+            advanceUntilIdle()
+
+            assertFalse(DiscoverTvYearFilter in viewModel.state.value.filterOptions)
+        }
+
+    @Test
+    fun `a TV genre grid does not offer the genre filter`() =
+        runTest(testDispatcher) {
+            val viewModel =
+                createViewModel(
+                    initialFilter = DiscoverFilter(genreIds = listOf(18)),
+                    persistKey = null,
+                    type = DiscoverRequestType.DISCOVER_TV,
+                )
+            advanceUntilIdle()
+
+            assertEquals(
+                discoverFilterOptions(
+                    DiscoverRequestType.DISCOVER_TV,
+                    BuildConfig.BROWSE_DISCOVER_ENABLED,
+                ) - DiscoverTvGenreFilter,
+                viewModel.state.value.filterOptions,
+            )
         }
 
     @Test
@@ -200,7 +306,7 @@ class DiscoverRequestViewModelTest {
             assertEquals(
                 discoverFilterOptions(
                     DiscoverRequestType.DISCOVER_MOVIES,
-                    BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED,
+                    BuildConfig.BROWSE_DISCOVER_ENABLED,
                 ),
                 viewModel.state.value.filterOptions,
             )
@@ -347,7 +453,19 @@ class DiscoverRequestViewModelTest {
             )
         assertEquals(expected, discoverSortOptions(DiscoverRequestType.DISCOVER_MOVIES, false))
         assertEquals(expected, discoverSortOptions(DiscoverRequestType.DISCOVER_TV, false))
-        assertEquals(expected, discoverSortOptions(DiscoverRequestType.DISCOVER_TV, true))
+    }
+
+    @Test
+    fun `TV browsing sorts by the TV name`() {
+        assertEquals(
+            listOf(
+                DiscoverSort.POPULARITY,
+                DiscoverSort.RELEASE_DATE,
+                DiscoverSort.TMDB_VOTE,
+                DiscoverSort.ORIGINAL_NAME,
+            ),
+            discoverSortOptions(DiscoverRequestType.DISCOVER_TV, true),
+        )
     }
 
     @Test
@@ -378,10 +496,17 @@ class DiscoverRequestViewModelTest {
     }
 
     @Test
+    fun `TV browsing adds the year filter`() {
+        assertEquals(browseTvFilters, discoverFilterOptions(DiscoverRequestType.DISCOVER_TV, true))
+        assertTrue(DiscoverTvYearFilter in browseTvFilters)
+    }
+
+    @Test
     fun `trending and upcoming grids have no options`() {
         listOf(
             DiscoverRequestType.TRENDING,
             DiscoverRequestType.TRENDING_MOVIES_WEEK,
+            DiscoverRequestType.TRENDING_TV_WEEK,
             DiscoverRequestType.UPCOMING_MOVIES,
             DiscoverRequestType.UPCOMING_TV,
             DiscoverRequestType.UNKNOWN,

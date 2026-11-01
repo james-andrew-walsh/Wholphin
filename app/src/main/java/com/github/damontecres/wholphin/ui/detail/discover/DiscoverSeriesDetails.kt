@@ -212,6 +212,12 @@ private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val RECOMMENDED_ROW = SIMILAR_ROW + 1
 private const val TRAILER_ROW = RECOMMENDED_ROW + 1
 
+/**
+ * Seerr takes a new request for a deleted series, so it gets the button of one never requested
+ */
+internal fun seriesButtonAvailability(status: Int?): SeerrAvailability =
+    SeerrAvailability.from(status)?.takeIf { it != SeerrAvailability.DELETED } ?: SeerrAvailability.UNKNOWN
+
 @Composable
 fun DiscoverSeriesDetailsContent(
     preferences: UserPreferences,
@@ -278,9 +284,7 @@ fun DiscoverSeriesDetailsContent(
                                     .padding(top = HeaderUtils.topPadding, bottom = 16.dp),
                         )
                         ExpandableDiscoverButtons(
-                            availability =
-                                SeerrAvailability.from(series.mediaInfo?.status)
-                                    ?: SeerrAvailability.UNKNOWN,
+                            availability = seriesButtonAvailability(series.mediaInfo?.status),
                             requestOnClick = requestOnClick,
                             pendingOnClick = requestOnClick,
                             cancelOnClick = cancelOnClick,

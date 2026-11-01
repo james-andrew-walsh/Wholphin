@@ -47,7 +47,7 @@ fun DiscoverPage(
         when (tabIndex) {
             // Discover
             0 -> {
-                if (BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED) {
+                if (BuildConfig.BROWSE_DISCOVER_ENABLED) {
                     MovieBrowsePage(
                         preferences = preferences,
                         positionCallback = { showHeader = it.row < 1 },
@@ -96,7 +96,7 @@ fun DiscoverPage(
             3 -> {
                 DiscoverRequestGrid(
                     viewModelKey = "movies",
-                    persistKey = if (BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED) MOVIES_FILTER_KEY else null,
+                    persistKey = if (BuildConfig.BROWSE_DISCOVER_ENABLED) MOVIES_FILTER_KEY else null,
                     showTitle = false,
                     destination =
                         Destination.DiscoverMoreResult(
@@ -113,20 +113,31 @@ fun DiscoverPage(
 
             // TV
             4 -> {
-                DiscoverRequestGrid(
-                    viewModelKey = "tv",
-                    showTitle = false,
-                    destination =
-                        Destination.DiscoverMoreResult(
-                            DiscoverRequestType.DISCOVER_TV,
-                            0,
-                        ),
-                    positionCallback = { columns, index -> showHeader = index < columns },
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .focusRequester(tabDetails.contentFocusRequester),
-                )
+                if (BuildConfig.BROWSE_DISCOVER_ENABLED) {
+                    TvBrowsePage(
+                        preferences = preferences,
+                        positionCallback = { showHeader = it.row < 1 },
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .focusRequester(tabDetails.contentFocusRequester),
+                    )
+                } else {
+                    DiscoverRequestGrid(
+                        viewModelKey = "tv",
+                        showTitle = false,
+                        destination =
+                            Destination.DiscoverMoreResult(
+                                DiscoverRequestType.DISCOVER_TV,
+                                0,
+                            ),
+                        positionCallback = { columns, index -> showHeader = index < columns },
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .focusRequester(tabDetails.contentFocusRequester),
+                    )
+                }
             }
 
             else -> {

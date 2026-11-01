@@ -51,7 +51,7 @@ const val SEERR_MAX_RESULTS = 500 * SEERR_PAGE_SIZE
  */
 fun capSeerrTotal(
     total: Int?,
-    enabled: Boolean = BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED,
+    enabled: Boolean = BuildConfig.BROWSE_DISCOVER_ENABLED,
 ): Int? = if (enabled) total?.coerceAtMost(SEERR_MAX_RESULTS) else total
 
 enum class DiscoverRequestType(
@@ -63,6 +63,7 @@ enum class DiscoverRequestType(
     UPCOMING_TV(R.string.upcoming_tv),
     UPCOMING_MOVIES(R.string.upcoming_movies),
     TRENDING_MOVIES_WEEK(R.string.popular_this_week),
+    TRENDING_TV_WEEK(R.string.popular_this_week),
     UNKNOWN(R.string.unknown),
 }
 
@@ -132,7 +133,7 @@ val TrendingRequestHandler =
             }
     }
 
-val TrendingMoviesWeekRequestHandler =
+private fun trendingWeekHandler(mediaType: SearchApi.MediaTypeDiscoverTrendingGet) =
     object : DiscoverRequestHandler<SeerrSearchResult> {
         override suspend fun execute(
             api: SeerrApi,
@@ -141,12 +142,16 @@ val TrendingMoviesWeekRequestHandler =
             api.api.searchApi
                 .discoverTrendingGet(
                     page = pageNumber,
-                    mediaType = SearchApi.MediaTypeDiscoverTrendingGet.MOVIE,
+                    mediaType = mediaType,
                     timeWindow = SearchApi.TimeWindowDiscoverTrendingGet.WEEK,
                 ).let {
                     QueryResult(it.results.orEmpty(), it.totalResults ?: 0)
                 }
     }
+
+val TrendingMoviesWeekRequestHandler = trendingWeekHandler(SearchApi.MediaTypeDiscoverTrendingGet.MOVIE)
+
+val TrendingTvWeekRequestHandler = trendingWeekHandler(SearchApi.MediaTypeDiscoverTrendingGet.TV)
 
 val UpcomingTvRequestHandler =
     object : DiscoverRequestHandler<TvResult> {

@@ -171,6 +171,7 @@ configure<ApplicationExtension> {
         val featureUpstreamNetwork = "UPSTREAM_NETWORK_ENABLED"
         val featureSeerrApiKeyAuth = "SEERR_API_KEY_AUTH_ENABLED"
         val featureMoviesOnlyDiscover = "MOVIES_ONLY_DISCOVER_ENABLED"
+        val featureBrowseDiscover = "BROWSE_DISCOVER_ENABLED"
         val featureDownloadsPage = "DOWNLOADS_PAGE_ENABLED"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
@@ -211,6 +212,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setFeatureFlag(featureMoviesOnlyDiscover, false)
+            setFeatureFlag(featureBrowseDiscover, false)
             setFeatureFlag(featureDownloadsPage, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
@@ -230,6 +232,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setFeatureFlag(featureMoviesOnlyDiscover, false)
+            setFeatureFlag(featureBrowseDiscover, false)
             setFeatureFlag(featureDownloadsPage, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
@@ -249,6 +252,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setFeatureFlag(featureMoviesOnlyDiscover, false)
+            setFeatureFlag(featureBrowseDiscover, false)
             setFeatureFlag(featureDownloadsPage, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
@@ -270,7 +274,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureRatingPages, true)
             setFeatureFlag(featureUpstreamNetwork, false)
             setFeatureFlag(featureSeerrApiKeyAuth, false)
-            setFeatureFlag(featureMoviesOnlyDiscover, true)
+            setFeatureFlag(featureMoviesOnlyDiscover, false)
+            setFeatureFlag(featureBrowseDiscover, true)
             setFeatureFlag(featureDownloadsPage, true)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // The upstream release this is merged with, raise it with each upstream merge

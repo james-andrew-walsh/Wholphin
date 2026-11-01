@@ -712,6 +712,8 @@ components:
           type: boolean
         cacheImages:
           type: boolean
+        enableSpecialEpisodes:
+          type: boolean
     MovieResult:
       type: object
       required:
@@ -1369,6 +1371,16 @@ components:
         downloadId:
           type: string
           nullable: true
+        episode:
+          $ref: '#/components/schemas/DownloadingEpisode'
+    DownloadingEpisode:
+      type: object
+      description: Only sent for a Sonarr queue entry
+      properties:
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
     Cast:
       type: object
       properties:

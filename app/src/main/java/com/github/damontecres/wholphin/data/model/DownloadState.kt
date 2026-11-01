@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.data.model
 
 import com.github.damontecres.wholphin.api.seerr.model.DownloadingItem
+import com.github.damontecres.wholphin.api.seerr.model.Season
 import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -125,6 +126,52 @@ fun downloadProgress(
         if (seenInQueue || available) DownloadState.PREPARING else DownloadState.SEARCHING,
     )
 }
+
+/**
+ * Whether the seasons a series request is for are in the library
+ *
+ * Seerr reports a series as available, and it has a Jellyfin ID, as soon as any season of it is in.
+ * That says nothing about a request for another season. A season is partially available from its
+ * first episode, which only means it's in once [queue] is empty: an airing season stays that way.
+ *
+ * @param requested the requested season numbers, empty for a movie
+ * @param mediaSeasons Seerr's availability per season, if it sent any
+ * @param is4k whether to read the 4K availability
+ * @param queue the queue entries for the [requested] seasons
+ * @return null if it can't be told, the media on a request has no seasons when the details can't be fetched
+ */
+fun requestedSeasonsInLibrary(
+    requested: List<Int>,
+    mediaSeasons: List<Season>?,
+    is4k: Boolean,
+    queue: List<DownloadingItem>?,
+): Boolean? {
+    if (requested.isEmpty()) return true
+    if (mediaSeasons.isNullOrEmpty()) return null
+    return requested.all { number ->
+        val season = mediaSeasons.firstOrNull { it.seasonNumber == number }
+        val availability = SeerrAvailability.from(if (is4k) season?.status4k else season?.status)
+        availability == SeerrAvailability.AVAILABLE ||
+            (availability == SeerrAvailability.PARTIALLY_AVAILABLE && queue.isNullOrEmpty())
+    }
+}
+
+/**
+ * The entries of a queue that a request is for
+ *
+ * Seerr's queue covers a whole series. An entry which doesn't say its season could be for this one.
+ *
+ * @param seasons the requested season numbers, empty for a movie
+ */
+fun requestedQueue(
+    queue: List<DownloadingItem>?,
+    seasons: List<Int>,
+): List<DownloadingItem>? =
+    if (seasons.isEmpty()) {
+        queue
+    } else {
+        queue?.filter { item -> item.episode?.seasonNumber.let { it == null || it in seasons } }
+    }
 
 /**
  * What a Seerr queue entry says about a download

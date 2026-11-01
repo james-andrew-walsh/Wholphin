@@ -1,7 +1,7 @@
 package com.github.damontecres.wholphin.ui.discover
 
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
-import com.github.damontecres.wholphin.data.filter.MovieBrowseRow
+import com.github.damontecres.wholphin.data.filter.BrowseRow
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.util.DataLoadingState
@@ -48,7 +48,7 @@ class MovieBrowseViewModelTest {
             emptyList()
         }
         coEvery { seerrService.movieGenres() } coAnswers {
-            requests.add(MovieBrowseRow.Genres)
+            requests.add(BrowseRow.Genres)
             emptyList()
         }
     }
@@ -71,7 +71,7 @@ class MovieBrowseViewModelTest {
     ): List<Any> =
         viewModel.rows.slice(indices).mapNotNull { row ->
             when (row) {
-                is MovieBrowseRow.Items -> {
+                is BrowseRow.Items -> {
                     if (row.shelf.type == DiscoverRequestType.DISCOVER_MOVIES) {
                         row.shelf.filter
                     } else {
@@ -79,11 +79,11 @@ class MovieBrowseViewModelTest {
                     }
                 }
 
-                MovieBrowseRow.Genres -> {
+                BrowseRow.Genres -> {
                     row
                 }
 
-                MovieBrowseRow.Decades -> {
+                BrowseRow.Decades -> {
                     null
                 }
             }
@@ -222,7 +222,7 @@ class MovieBrowseViewModelTest {
             viewModel.ensureLoaded(0)
             advanceUntilIdle()
 
-            val highlyRated = (viewModel.rows[2] as MovieBrowseRow.Items).shelf
+            val highlyRated = (viewModel.rows[2] as BrowseRow.Items).shelf
             assertTrue(highlyRated.filter in requests)
         }
 

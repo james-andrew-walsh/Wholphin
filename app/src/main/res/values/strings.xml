@@ -518,11 +518,16 @@
     <string name="popular">Popular</string>
     <string name="highly_rated">Highly Rated</string>
     <string name="new_releases">New Releases</string>
+    <string name="new_series">New Series</string>
     <string name="upcoming">Upcoming</string>
     <string name="decades">Decades</string>
     <string name="year_or_decade">Year/Decade</string>
     <string name="downloads_title">Downloads</string>
-    <string name="downloads_empty">No movies requested yet</string>
+    <string name="downloads_empty">Nothing requested yet</string>
+    <plurals name="download_seasons">
+        <item quantity="one">Season %1$s</item>
+        <item quantity="other">Seasons %1$s</item>
+    </plurals>
     <string name="downloads_load_error">Couldn\'t load your downloads</string>
     <string name="downloads_refresh_error">Couldn\'t update, trying again soon</string>
     <string name="download_state_pending">Pending approval</string>
@@ -537,6 +542,7 @@
     <string name="download_percent">%1$d%%</string>
     <string name="download_time_left">%1$s left</string>
     <string name="download_detail_movie_page">Movie page</string>
+    <string name="download_detail_series_page">Series page</string>
     <string name="download_detail_back">Back to downloads</string>
     <string name="download_detail_no_value">–</string>
     <string name="download_detail_loading">Getting the live details…</string>

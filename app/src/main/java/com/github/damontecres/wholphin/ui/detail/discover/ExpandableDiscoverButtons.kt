@@ -143,7 +143,7 @@ fun ExpandableDiscoverButtons(
                     onClick = {
                         requestOnClick.invoke()
                     },
-                    enabled = availability == SeerrAvailability.PARTIALLY_AVAILABLE,
+                    enabled = canRequest,
                     modifier =
                         Modifier
                             .onFocusChanged(buttonOnFocusChanged),

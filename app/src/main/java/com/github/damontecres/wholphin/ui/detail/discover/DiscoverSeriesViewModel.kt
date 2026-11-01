@@ -227,16 +227,22 @@ class DiscoverSeriesViewModel
                             if (current == null || new.status > current.status) {
                                 seasonStatus[season.seasonNumber] = new
                             }
-                            editable[season.seasonNumber] =
-                                currentUserId == req.requestedBy?.id && req.status == RequestStatus.PENDING.status
+                            // Seerr doesn't count these as duplicates, so they don't lock the season
+                            if (req.status != RequestStatus.DECLINED.status && req.status != RequestStatus.COMPLETED.status) {
+                                editable[season.seasonNumber] =
+                                    currentUserId == req.requestedBy?.id && req.status == RequestStatus.PENDING.status
+                            }
                         }
                     }
                 }
             Timber.v("seasonAvailability=%s", seasonAvailability)
             Timber.v("seasonStatus=%s", seasonStatus)
+            // As in Seerr's own picker: it drops Specials from a request unless they're enabled
+            val specialsEnabled = seerrServerRepository.current.first()?.specialEpisodesEnabled == true
+            val offeredSeasons = tv.seasons?.filter { it.episodeCount != 0 && (specialsEnabled || it.seasonNumber != 0) }
             val requestSeasons =
                 seasonStatus.mapNotNull { (seasonNumber, status) ->
-                    tv.seasons?.firstOrNull { it.seasonNumber == seasonNumber }?.let {
+                    offeredSeasons?.firstOrNull { it.seasonNumber == seasonNumber }?.let {
                         val availability =
                             when (status) {
                                 RequestStatus.PENDING -> {
@@ -247,15 +253,12 @@ class DiscoverSeriesViewModel
                                     SeerrAvailability.PROCESSING
                                 }
 
-                                RequestStatus.DECLINED -> {
-                                    SeerrAvailability.UNKNOWN
-                                }
-
                                 RequestStatus.FAILURE -> {
                                     SeerrAvailability.UNKNOWN
                                 }
 
                                 RequestStatus.UNKNOWN,
+                                RequestStatus.DECLINED,
                                 RequestStatus.COMPLETED,
                                 -> {
                                     seasonAvailability.getOrDefault(

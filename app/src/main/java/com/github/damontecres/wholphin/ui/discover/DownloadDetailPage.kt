@@ -48,6 +48,7 @@ import com.github.damontecres.wholphin.data.model.DownloadProgress
 import com.github.damontecres.wholphin.data.model.DownloadStatus
 import com.github.damontecres.wholphin.data.model.RadarrStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
+import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.TrackerSummary
 import com.github.damontecres.wholphin.data.model.bandwidthGraph
 import com.github.damontecres.wholphin.data.model.downloadDetailRefreshDelay
@@ -130,6 +131,7 @@ class DownloadDetailViewModel
         private val retries = Channel<Unit>(Channel.CONFLATED)
         private var failures = 0
         private var lastRefresh: TimeMark? = null
+        private val isSeries = destination.item.type == SeerrItemType.TV
 
         /**
          * Keep the details up to date for as long as the caller stays active
@@ -159,8 +161,11 @@ class DownloadDetailViewModel
                 is DownloadStatusResult.Success -> {
                     failures = 0
                     _state.update {
-                        it.copy(status = result.status, error = null, finished = result.status.leftQueue)
+                        // The service only reads Radarr's queue, so a series is never tracked there
+                        it.copy(status = result.status, error = null, finished = !isSeries && result.status.leftQueue)
                     }
+                    // A torrent can seed on after Sonarr has imported it, so only Seerr can end these
+                    if (isSeries && result.status.fraction == 1f) refreshFromSeerr()
                 }
 
                 DownloadStatusResult.Gone -> {
@@ -183,18 +188,25 @@ class DownloadDetailViewModel
          * Without the status service, Seerr is the fallback for the progress and for noticing the end
          *
          * Being missing from Seerr's queue proves nothing since it only reads the start of the queue
-         * and has nothing while Radarr is down, so it also has to say that the movie is there.
+         * and has nothing while Radarr is down, so it also has to say that the movie is there. A
+         * series is partially available as soon as any season is in, which needn't be this download.
          */
         private suspend fun refreshFromSeerr() {
             val media =
                 try {
-                    seerrService.api.moviesApi
-                        .movieMovieIdGet(movieId = destination.tmdbId)
-                        .mediaInfo
+                    if (isSeries) {
+                        seerrService.api.tvApi
+                            .tvTvIdGet(tvId = destination.tmdbId)
+                            .mediaInfo
+                    } else {
+                        seerrService.api.moviesApi
+                            .movieMovieIdGet(movieId = destination.tmdbId)
+                            .mediaInfo
+                    }
                 } catch (ex: CancellationException) {
                     throw ex
                 } catch (ex: Exception) {
-                    Timber.w(ex, "Error fetching movie %s", destination.tmdbId)
+                    Timber.w(ex, "Error fetching %s %s", destination.item.type, destination.tmdbId)
                     return
                 }
             val queue = if (destination.is4k) media?.downloadStatus4k else media?.downloadStatus
@@ -202,7 +214,9 @@ class DownloadDetailViewModel
             val entry = queue?.firstOrNull { it.downloadId.equals(destination.downloadId, ignoreCase = true) }
             if (entry != null) {
                 _state.update { it.copy(seerrProgress = queueProgress(entry, Instant.now())) }
-            } else if (availability == SeerrAvailability.AVAILABLE || availability == SeerrAvailability.PARTIALLY_AVAILABLE) {
+            } else if (availability == SeerrAvailability.AVAILABLE ||
+                (availability == SeerrAvailability.PARTIALLY_AVAILABLE && !isSeries)
+            ) {
                 finish()
             }
         }
@@ -245,6 +259,7 @@ fun DownloadDetailPage(
     val showRetry = state.error != null
     // The retry button takes focus with it when it goes away, a remote would have nothing focused
     LaunchedEffect(showRetry) { focusRequester.tryRequestFocus("download detail") }
+    val isSeries = destination.item.type == SeerrItemType.TV
 
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
         Row(
@@ -275,7 +290,7 @@ fun DownloadDetailPage(
                             .aspectRatio(AspectRatios.TALL),
                 )
                 TextButton(
-                    stringRes = R.string.download_detail_movie_page,
+                    stringRes = if (isSeries) R.string.download_detail_series_page else R.string.download_detail_movie_page,
                     onClick = viewModel::openMovie,
                     modifier =
                         Modifier
@@ -320,7 +335,7 @@ fun DownloadDetailPage(
                     }
 
                     status != null -> {
-                        LiveDetails(status)
+                        LiveDetails(status, showImportState = !isSeries)
                     }
 
                     else -> {
@@ -369,8 +384,14 @@ private fun SeerrDetails(
     }
 }
 
+/**
+ * @param showImportState the status service only reads Radarr's queue, which never has a series
+ */
 @Composable
-private fun ColumnScope.LiveDetails(status: DownloadStatus) {
+private fun ColumnScope.LiveDetails(
+    status: DownloadStatus,
+    showImportState: Boolean,
+) {
     val dash = stringResource(R.string.download_detail_no_value)
     Text(
         text = status.stateLabel ?: dash,
@@ -456,17 +477,19 @@ private fun ColumnScope.LiveDetails(status: DownloadStatus) {
         label = stringResource(R.string.download_detail_peer_clients),
         value = formatPeerClients(status.peerClients) ?: dash,
     )
-    DetailText(
-        label = stringResource(R.string.download_detail_radarr),
-        value = radarrText(status.radarr, dash),
-    )
-    if (status.radarr.messages.isNotEmpty()) {
-        Text(
-            text = status.radarr.messages.joinToString(DETAIL_SEPARATOR),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+    if (showImportState) {
+        DetailText(
+            label = stringResource(R.string.download_detail_radarr),
+            value = radarrText(status.radarr, dash),
         )
+        if (status.radarr.messages.isNotEmpty()) {
+            Text(
+                text = status.radarr.messages.joinToString(DETAIL_SEPARATOR),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

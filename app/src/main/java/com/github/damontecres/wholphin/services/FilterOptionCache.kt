@@ -14,6 +14,7 @@ import com.github.damontecres.wholphin.data.filter.DiscoverRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStatusFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverTvYearFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStudiosFilter
 import com.github.damontecres.wholphin.data.filter.FavoriteFilter
 import com.github.damontecres.wholphin.data.filter.FilterBy
@@ -26,6 +27,7 @@ import com.github.damontecres.wholphin.data.filter.StudioFilter
 import com.github.damontecres.wholphin.data.filter.VideoTypeFilter
 import com.github.damontecres.wholphin.data.filter.YearFilter
 import com.github.damontecres.wholphin.data.filter.movieYearFilterOptions
+import com.github.damontecres.wholphin.data.filter.tvYearFilterOptions
 import com.github.damontecres.wholphin.services.hilt.IoCoroutineScope
 import com.github.damontecres.wholphin.ui.showToast
 import com.mayakapps.kache.InMemoryKache
@@ -265,6 +267,10 @@ class FilterOptionCache
 
                 DiscoverMovieYearFilter -> {
                     movieYearFilterOptions(LocalDate.now())
+                }
+
+                DiscoverTvYearFilter -> {
+                    tvYearFilterOptions(LocalDate.now())
                 }
             }
         }

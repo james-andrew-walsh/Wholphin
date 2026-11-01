@@ -3,6 +3,7 @@ package com.github.damontecres.wholphin.services
 import com.github.damontecres.wholphin.api.seerr.SeerrApiClient
 import com.github.damontecres.wholphin.api.seerr.model.CreditCast
 import com.github.damontecres.wholphin.api.seerr.model.CreditCrew
+import com.github.damontecres.wholphin.api.seerr.model.DiscoverGenresliderMovieGet200ResponseInner
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
 import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
 import com.github.damontecres.wholphin.api.seerr.model.MovieResult
@@ -29,6 +30,7 @@ import com.github.damontecres.wholphin.ui.formatBytes
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.toLocalDate
 import com.github.damontecres.wholphin.util.TrendingMoviesWeekRequestHandler
+import com.github.damontecres.wholphin.util.TrendingTvWeekRequestHandler
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import org.jellyfin.sdk.model.api.BaseItemKind
@@ -97,15 +99,34 @@ class SeerrService
                 ?.map { createDiscoverItem(it) }
                 .orEmpty()
 
+        suspend fun discoverTvBy(
+            filter: DiscoverFilter,
+            page: Int = 1,
+        ): List<DiscoverItem> =
+            filter
+                .discoverTv(api.searchApi, page)
+                .results
+                ?.map { createDiscoverItem(it) }
+                .orEmpty()
+
         suspend fun trendingMoviesWeek(page: Int = 1): List<DiscoverItem> =
             TrendingMoviesWeekRequestHandler
                 .execute(seerApi, page)
                 .items
                 .map { createDiscoverItem(it) }
 
-        suspend fun movieGenres(): List<Genre> =
-            api.searchApi
-                .discoverGenresliderMovieGet()
+        suspend fun trendingTvWeek(page: Int = 1): List<DiscoverItem> =
+            TrendingTvWeekRequestHandler
+                .execute(seerApi, page)
+                .items
+                .map { createDiscoverItem(it) }
+
+        suspend fun movieGenres(): List<Genre> = createGenres(api.searchApi.discoverGenresliderMovieGet())
+
+        suspend fun tvGenres(): List<Genre> = createGenres(api.searchApi.discoverGenresliderTvGet())
+
+        private suspend fun createGenres(genres: List<DiscoverGenresliderMovieGet200ResponseInner>): List<Genre> =
+            genres
                 .filter { it.id != null && it.name != null }
                 .map {
                     val imageUrl =

@@ -3,11 +3,15 @@ package com.github.damontecres.wholphin.ui.discover
 import com.github.damontecres.wholphin.api.seerr.MoviesApi
 import com.github.damontecres.wholphin.api.seerr.RequestApi
 import com.github.damontecres.wholphin.api.seerr.SeerrApiClient
+import com.github.damontecres.wholphin.api.seerr.TvApi
+import com.github.damontecres.wholphin.api.seerr.model.DownloadingEpisode
 import com.github.damontecres.wholphin.api.seerr.model.DownloadingItem
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
 import com.github.damontecres.wholphin.api.seerr.model.MediaRequest
 import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
 import com.github.damontecres.wholphin.api.seerr.model.PageInfo
+import com.github.damontecres.wholphin.api.seerr.model.Season
+import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.api.seerr.model.UserUserIdRequestsGet200Response
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadState
@@ -58,6 +62,7 @@ import java.util.UUID
 
 private const val USER_ID = 7
 private const val JELLYFIN_ID = "0123456789abcdef0123456789abcdef"
+private val HASH = "abcdef0123".repeat(4)
 private val jellyfinUuid = UUID.fromString("01234567-89ab-cdef-0123-456789abcdef")
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -66,6 +71,7 @@ class DownloadsViewModelTest {
 
     private val requestApi = mockk<RequestApi>()
     private val moviesApi = mockk<MoviesApi>()
+    private val tvApi = mockk<TvApi>()
     private val seerrApiClient = mockk<SeerrApiClient>()
     private val seerrService = mockk<SeerrService>()
     private val seerrServerRepository = mockk<SeerrServerRepository>()
@@ -77,12 +83,15 @@ class DownloadsViewModelTest {
     private val movies = mutableMapOf<Int, MediaInfo>()
     private val movieFetches = mutableListOf<Int>()
     private var movieFailure: Exception? = null
+    private val series = mutableMapOf<Int, MediaInfo>()
+    private val seriesFetches = mutableListOf<Int>()
 
     @Before
     fun setUp() {
         WholphinDispatchers.configure(testDispatcher)
         every { seerrApiClient.requestApi } returns requestApi
         every { seerrApiClient.moviesApi } returns moviesApi
+        every { seerrApiClient.tvApi } returns tvApi
         every { seerrService.api } returns seerrApiClient
         every { seerrServerRepository.currentUserId } returns userId
         every { api.userLibraryApi } returns userLibraryApi
@@ -103,7 +112,29 @@ class DownloadsViewModelTest {
                 jellyfinItemId = null,
             )
         }
+        coEvery { seerrService.createDiscoverItem(any<TvDetails>()) } coAnswers {
+            val tv = firstArg<TvDetails>()
+            DiscoverItem(
+                id = tv.id!!,
+                type = SeerrItemType.TV,
+                title = tv.name,
+                subtitle = null,
+                overview = null,
+                availability = SeerrAvailability.UNKNOWN,
+                releaseDate = null,
+                posterUrl = "jellyfin-poster",
+                backDropUrl = null,
+                logoUrl = null,
+                jellyfinItemId = null,
+            )
+        }
         coEvery { seerrService.createImageUrl(any(), any(), any(), any(), any()) } returns "tmdb-poster"
+        coEvery { tvApi.tvTvIdGet(any(), any()) } coAnswers {
+            val id = firstArg<Int>()
+            seriesFetches.add(id)
+            movieFailure?.let { throw it }
+            TvDetails(id = id, name = "Series $id", mediaInfo = series[id])
+        }
         coEvery { moviesApi.movieMovieIdGet(any(), any()) } coAnswers {
             val id = firstArg<Int>()
             movieFetches.add(id)
@@ -131,6 +162,36 @@ class DownloadsViewModelTest {
         status: RequestStatus = RequestStatus.APPROVED,
         is4k: Boolean = false,
     ) = MediaRequest(id = id, status = status.status, media = media.copy(tmdbId = id), is4k = is4k)
+
+    private fun seriesRequest(
+        id: Int,
+        seasons: List<Int> = listOf(1),
+        status: RequestStatus = RequestStatus.APPROVED,
+    ) = MediaRequest(
+        id = id,
+        status = status.status,
+        type = "tv",
+        media = (series[id] ?: MediaInfo()).copy(tmdbId = id),
+        seasons = seasons.map { Season(seasonNumber = it) },
+    )
+
+    private fun seriesMedia(
+        id: Int,
+        availability: SeerrAvailability,
+        seasons: Map<Int, SeerrAvailability> = emptyMap(),
+        downloadStatus: List<DownloadingItem> = emptyList(),
+        jellyfinMediaId: String? = null,
+    ) {
+        series[id] =
+            MediaInfo(
+                tmdbId = id,
+                status = availability.status,
+                seasons = seasons.map { (number, status) -> Season(seasonNumber = number, status = status.status) },
+                downloadStatus = downloadStatus,
+                jellyfinMediaId = jellyfinMediaId,
+                requests = listOf(MediaRequest(id = id, status = RequestStatus.APPROVED.status)),
+            )
+    }
 
     private fun media(
         id: Int,
@@ -178,7 +239,7 @@ class DownloadsViewModelTest {
         launch(testDispatcher) { viewModel.refreshWhileVisible() }
 
     @Test
-    fun `asks for this user's newest movie requests`() =
+    fun `asks for this user's newest requests of any type`() =
         runTest(testDispatcher) {
             requests()
             createViewModel()
@@ -192,9 +253,249 @@ class DownloadsViewModelTest {
                     sort = RequestApi.SortRequestGet.ADDED,
                     sortDirection = RequestApi.SortDirectionRequestGet.DESC,
                     requestedBy = USER_ID,
-                    mediaType = RequestApi.MediaTypeRequestGet.MOVIE,
+                    mediaType = RequestApi.MediaTypeRequestGet.ALL,
                 )
             }
+        }
+
+    @Test
+    fun `a series request reads the series, a movie can have the same ID`() =
+        runTest(testDispatcher) {
+            seriesMedia(1, SeerrAvailability.PROCESSING)
+            requests(seriesRequest(1, seasons = listOf(2, 1)))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            val row = viewModel.rows().single()
+            assertEquals(SeerrItemType.TV, row.type)
+            assertEquals(listOf(1, 2), row.seasons)
+            assertEquals("Series 1", row.item?.title)
+            assertEquals(SeerrItemType.TV, row.item?.type)
+            assertEquals("tmdb-poster", row.item?.posterUrl)
+            assertEquals(emptyList<Int>(), movieFetches)
+            assertEquals(listOf(1), seriesFetches)
+        }
+
+    @Test
+    fun `a movie request has no seasons`() =
+        runTest(testDispatcher) {
+            requests(request(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            val row = viewModel.rows().single()
+            assertEquals(SeerrItemType.MOVIE, row.type)
+            assertEquals(emptyList<Int>(), row.seasons)
+            assertEquals(emptyList<Int>(), seriesFetches)
+        }
+
+    @Test
+    fun `a series that can't be fetched still gets its state`() =
+        runTest(testDispatcher) {
+            movieFailure = IOException("offline")
+            seriesMedia(1, SeerrAvailability.PROCESSING)
+            requests(seriesRequest(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            val row = viewModel.rows().single()
+            assertEquals(null, row.item)
+            assertEquals(DownloadState.SEARCHING, row.progress.state)
+        }
+
+    @Test
+    fun `a refresh reads the series too`() =
+        runTest(testDispatcher) {
+            seriesMedia(1, SeerrAvailability.PROCESSING)
+            requests(seriesRequest(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+            assertEquals(DownloadState.SEARCHING, viewModel.rowState())
+
+            seriesMedia(
+                1,
+                SeerrAvailability.PROCESSING,
+                downloadStatus = listOf(DownloadingItem(status = "downloading")),
+            )
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            job.cancelAndJoin()
+
+            assertEquals(DownloadState.DOWNLOADING, viewModel.rowState())
+            assertEquals(emptyList<Int>(), movieFetches)
+        }
+
+    @Test
+    fun `a series in Jellyfin opens as a series`() =
+        runTest(testDispatcher) {
+            seriesMedia(
+                1,
+                SeerrAvailability.AVAILABLE,
+                seasons = mapOf(1 to SeerrAvailability.AVAILABLE),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            coEvery { userLibraryApi.getItem(jellyfinUuid) } returns
+                successResponse(mockk<BaseItemDto>())
+            requests(seriesRequest(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.READY, viewModel.rowState())
+            viewModel.open(viewModel.rows().single())
+            verify {
+                navigationManager.navigateTo(Destination.MediaItem(jellyfinUuid, BaseItemKind.SERIES))
+            }
+        }
+
+    @Test
+    fun `an airing season counts as ready once it is partly in`() =
+        runTest(testDispatcher) {
+            seriesMedia(
+                1,
+                SeerrAvailability.PARTIALLY_AVAILABLE,
+                seasons = mapOf(1 to SeerrAvailability.PARTIALLY_AVAILABLE),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            coEvery { userLibraryApi.getItem(jellyfinUuid) } returns
+                successResponse(mockk<BaseItemDto>())
+            requests(seriesRequest(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.READY, viewModel.rowState())
+        }
+
+    @Test
+    fun `a partly imported season keeps downloading until its queue is empty`() =
+        runTest(testDispatcher) {
+            coEvery { userLibraryApi.getItem(jellyfinUuid) } returns
+                successResponse(mockk<BaseItemDto>())
+            val partial = mapOf(1 to SeerrAvailability.AVAILABLE, 2 to SeerrAvailability.PARTIALLY_AVAILABLE)
+            seriesMedia(
+                1,
+                SeerrAvailability.PARTIALLY_AVAILABLE,
+                seasons = partial,
+                downloadStatus =
+                    listOf(
+                        DownloadingItem(status = "downloading", downloadId = HASH, episode = DownloadingEpisode(seasonNumber = 2)),
+                    ),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            requests(seriesRequest(1, seasons = listOf(2)))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.DOWNLOADING, viewModel.rowState())
+            assertTrue(viewModel.state.value.refreshing)
+            assertEquals(HASH, detailDestination(viewModel.rows().single(), enabled = true)?.downloadId)
+
+            seriesMedia(1, SeerrAvailability.PARTIALLY_AVAILABLE, seasons = partial, jellyfinMediaId = JELLYFIN_ID)
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            job.cancelAndJoin()
+
+            assertEquals(DownloadState.READY, viewModel.rowState())
+        }
+
+    @Test
+    fun `a request doesn't show another season's download`() =
+        runTest(testDispatcher) {
+            seriesMedia(
+                1,
+                SeerrAvailability.PROCESSING,
+                downloadStatus =
+                    listOf(
+                        DownloadingItem(status = "downloading", downloadId = HASH, episode = DownloadingEpisode(seasonNumber = 1)),
+                    ),
+            )
+            requests(seriesRequest(1, seasons = listOf(2)))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            val row = viewModel.rows().single()
+            assertEquals(DownloadState.SEARCHING, row.progress.state)
+            assertEquals(null, row.progress.downloadId)
+            assertFalse(row.seenInQueue)
+        }
+
+    @Test
+    fun `a series isn't ready until its seasons can be read`() =
+        runTest(testDispatcher) {
+            coEvery { userLibraryApi.getItem(jellyfinUuid) } returns
+                successResponse(mockk<BaseItemDto>())
+            // The media on a request comes without its seasons
+            series[1] =
+                MediaInfo(status = SeerrAvailability.PARTIALLY_AVAILABLE.status, jellyfinMediaId = JELLYFIN_ID)
+            requests(seriesRequest(1, seasons = listOf(2)))
+            movieFailure = IOException("offline")
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.PREPARING, viewModel.rowState())
+            assertTrue(viewModel.state.value.refreshing)
+
+            movieFailure = null
+            seriesMedia(
+                1,
+                SeerrAvailability.PARTIALLY_AVAILABLE,
+                seasons = mapOf(1 to SeerrAvailability.AVAILABLE, 2 to SeerrAvailability.PROCESSING),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            job.cancelAndJoin()
+
+            assertEquals(DownloadState.SEARCHING, viewModel.rowState())
+        }
+
+    @Test
+    fun `a new season of a series already in Jellyfin isn't ready until that season is`() =
+        runTest(testDispatcher) {
+            coEvery { userLibraryApi.getItem(jellyfinUuid) } returns
+                successResponse(mockk<BaseItemDto>())
+            seriesMedia(
+                1,
+                SeerrAvailability.PARTIALLY_AVAILABLE,
+                seasons = mapOf(1 to SeerrAvailability.AVAILABLE, 2 to SeerrAvailability.PROCESSING),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            requests(seriesRequest(1, seasons = listOf(2)))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+            assertEquals(DownloadState.SEARCHING, viewModel.rowState())
+            assertTrue(viewModel.state.value.refreshing)
+
+            seriesMedia(
+                1,
+                SeerrAvailability.PARTIALLY_AVAILABLE,
+                seasons = mapOf(1 to SeerrAvailability.AVAILABLE, 2 to SeerrAvailability.PROCESSING),
+                downloadStatus = listOf(DownloadingItem(status = "downloading")),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            val job = startRefreshing(viewModel)
+            advanceTimeBy(15_001)
+            assertEquals(DownloadState.DOWNLOADING, viewModel.rowState())
+
+            seriesMedia(
+                1,
+                SeerrAvailability.AVAILABLE,
+                seasons = mapOf(1 to SeerrAvailability.AVAILABLE, 2 to SeerrAvailability.AVAILABLE),
+                jellyfinMediaId = JELLYFIN_ID,
+            )
+            advanceTimeBy(15_001)
+            job.cancelAndJoin()
+            assertEquals(DownloadState.READY, viewModel.rowState())
+        }
+
+    @Test
+    fun `blocklisted series stay that way while a season is missing`() =
+        runTest(testDispatcher) {
+            seriesMedia(1, SeerrAvailability.BLOCKLISTED, seasons = mapOf(1 to SeerrAvailability.UNKNOWN))
+            requests(seriesRequest(1))
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.UNAVAILABLE, viewModel.rowState())
         }
 
     @Test

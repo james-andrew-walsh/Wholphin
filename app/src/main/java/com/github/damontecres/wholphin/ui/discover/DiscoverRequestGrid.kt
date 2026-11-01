@@ -29,6 +29,7 @@ import com.github.damontecres.wholphin.data.filter.DiscoverSort
 import com.github.damontecres.wholphin.data.filter.DiscoverSortAndDirection
 import com.github.damontecres.wholphin.data.filter.FilterValueOption
 import com.github.damontecres.wholphin.data.filter.browseMovieFilters
+import com.github.damontecres.wholphin.data.filter.browseTvFilters
 import com.github.damontecres.wholphin.data.filter.discoverMovieFilters
 import com.github.damontecres.wholphin.data.filter.discoverTvFilters
 import com.github.damontecres.wholphin.data.model.DiscoverItem
@@ -53,6 +54,7 @@ import com.github.damontecres.wholphin.util.DiscoverRequestType
 import com.github.damontecres.wholphin.util.DiscoverTvRequestHandler
 import com.github.damontecres.wholphin.util.TrendingMoviesWeekRequestHandler
 import com.github.damontecres.wholphin.util.TrendingRequestHandler
+import com.github.damontecres.wholphin.util.TrendingTvWeekRequestHandler
 import com.github.damontecres.wholphin.util.UpcomingMovieRequestHandler
 import com.github.damontecres.wholphin.util.UpcomingTvRequestHandler
 import dagger.assisted.Assisted
@@ -99,18 +101,21 @@ class DiscoverRequestViewModel
 
         init {
             viewModelScope.launchDefault {
-                val moviesOnly = BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED
-                val sortOptions = discoverSortOptions(type, moviesOnly)
-                val potentialFilterOptions = discoverFilterOptions(type, moviesOnly)
+                val browse = BuildConfig.BROWSE_DISCOVER_ENABLED
+                val sortOptions = discoverSortOptions(type, browse)
+                val potentialFilterOptions = discoverFilterOptions(type, browse)
                 val saved = loadSavedFilter()
                 val sortAndDirection =
                     when (type) {
-                        DiscoverRequestType.DISCOVER_TV -> DiscoverSortAndDirection()
-                        DiscoverRequestType.DISCOVER_MOVIES -> saved?.sortBy ?: initialFilter.sortBy ?: DiscoverSortAndDirection()
+                        DiscoverRequestType.DISCOVER_TV,
+                        DiscoverRequestType.DISCOVER_MOVIES,
+                        -> saved?.sortBy ?: initialFilter.sortBy ?: DiscoverSortAndDirection()
+
                         DiscoverRequestType.TRENDING -> DiscoverSortAndDirection()
                         DiscoverRequestType.UPCOMING_TV -> DiscoverSortAndDirection()
                         DiscoverRequestType.UPCOMING_MOVIES -> DiscoverSortAndDirection()
                         DiscoverRequestType.TRENDING_MOVIES_WEEK -> DiscoverSortAndDirection()
+                        DiscoverRequestType.TRENDING_TV_WEEK -> DiscoverSortAndDirection()
                         DiscoverRequestType.UNKNOWN -> DiscoverSortAndDirection()
                     }
                 val filterOptions =
@@ -240,6 +245,15 @@ class DiscoverRequestViewModel
                                     )
                                 }
 
+                                DiscoverRequestType.TRENDING_TV_WEEK -> {
+                                    DiscoverRequestPager(
+                                        api,
+                                        TrendingTvWeekRequestHandler,
+                                        seerrService::createDiscoverItem,
+                                        viewModelScope,
+                                    )
+                                }
+
                                 DiscoverRequestType.UNKNOWN -> {
                                     throw IllegalArgumentException("Cannot display grid for DiscoverRequestType.UNKNOWN")
                                 }
@@ -302,20 +316,29 @@ data class DiscoverRequestState(
 /**
  * The sorts offered for a grid of the [type]
  *
- * @param moviesOnly whether this is the movie browsing experience
+ * @param browse whether this is the browsing experience of [BuildConfig.BROWSE_DISCOVER_ENABLED]
  */
 fun discoverSortOptions(
     type: DiscoverRequestType,
-    moviesOnly: Boolean,
+    browse: Boolean,
 ): List<DiscoverSort> {
-    val defaultSorts = DiscoverSort.entries - DiscoverSort.PRIMARY_RELEASE_DATE
+    val defaultSorts = DiscoverSort.entries - DiscoverSort.PRIMARY_RELEASE_DATE - DiscoverSort.ORIGINAL_NAME
     return when (type) {
         DiscoverRequestType.DISCOVER_TV -> {
-            defaultSorts
+            if (browse) {
+                listOf(
+                    DiscoverSort.POPULARITY,
+                    DiscoverSort.RELEASE_DATE,
+                    DiscoverSort.TMDB_VOTE,
+                    DiscoverSort.ORIGINAL_NAME,
+                )
+            } else {
+                defaultSorts
+            }
         }
 
         DiscoverRequestType.DISCOVER_MOVIES -> {
-            if (moviesOnly) {
+            if (browse) {
                 listOf(
                     DiscoverSort.POPULARITY,
                     DiscoverSort.PRIMARY_RELEASE_DATE,
@@ -331,6 +354,7 @@ fun discoverSortOptions(
         DiscoverRequestType.UPCOMING_TV,
         DiscoverRequestType.UPCOMING_MOVIES,
         DiscoverRequestType.TRENDING_MOVIES_WEEK,
+        DiscoverRequestType.TRENDING_TV_WEEK,
         DiscoverRequestType.UNKNOWN,
         -> {
             emptyList()
@@ -341,25 +365,26 @@ fun discoverSortOptions(
 /**
  * The filters that could be offered for a grid of the [type]
  *
- * @param moviesOnly whether this is the movie browsing experience
+ * @param browse whether this is the browsing experience of [BuildConfig.BROWSE_DISCOVER_ENABLED]
  */
 fun discoverFilterOptions(
     type: DiscoverRequestType,
-    moviesOnly: Boolean,
+    browse: Boolean,
 ): List<DiscoverFilterBy<*>> =
     when (type) {
         DiscoverRequestType.DISCOVER_TV -> {
-            discoverTvFilters
+            if (browse) browseTvFilters else discoverTvFilters
         }
 
         DiscoverRequestType.DISCOVER_MOVIES -> {
-            if (moviesOnly) browseMovieFilters else discoverMovieFilters
+            if (browse) browseMovieFilters else discoverMovieFilters
         }
 
         DiscoverRequestType.TRENDING,
         DiscoverRequestType.UPCOMING_TV,
         DiscoverRequestType.UPCOMING_MOVIES,
         DiscoverRequestType.TRENDING_MOVIES_WEEK,
+        DiscoverRequestType.TRENDING_TV_WEEK,
         DiscoverRequestType.UNKNOWN,
         -> {
             emptyList()
@@ -455,7 +480,7 @@ fun DiscoverRequestGrid(
                     columns = 6,
                     totalLabel =
                         "%,d+".format(SEERR_MAX_RESULTS).takeIf {
-                            BuildConfig.MOVIES_ONLY_DISCOVER_ENABLED && s.data.size >= SEERR_MAX_RESULTS
+                            BuildConfig.BROWSE_DISCOVER_ENABLED && s.data.size >= SEERR_MAX_RESULTS
                         },
                     positionCallback = { columns, index ->
                         showHeader = index < columns

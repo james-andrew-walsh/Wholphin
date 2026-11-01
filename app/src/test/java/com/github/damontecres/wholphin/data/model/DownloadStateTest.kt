@@ -1,7 +1,9 @@
 package com.github.damontecres.wholphin.data.model
 
+import com.github.damontecres.wholphin.api.seerr.model.DownloadingEpisode
 import com.github.damontecres.wholphin.api.seerr.model.DownloadingItem
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
+import com.github.damontecres.wholphin.api.seerr.model.Season
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -525,5 +527,95 @@ class DownloadStateTest {
             )
 
         assertEquals("NEW", status.downloadId)
+    }
+
+    private fun season(
+        number: Int,
+        status: SeerrAvailability = SeerrAvailability.UNKNOWN,
+        status4k: SeerrAvailability = SeerrAvailability.UNKNOWN,
+    ) = Season(seasonNumber = number, status = status.status, status4k = status4k.status)
+
+    private fun inLibrary(
+        requested: List<Int>,
+        seasons: List<Season>?,
+        is4k: Boolean = false,
+        queue: List<DownloadingItem>? = null,
+    ) = requestedSeasonsInLibrary(requested, seasons, is4k, queue)
+
+    private fun queuedSeason(season: Int?) =
+        DownloadingItem(status = "downloading", episode = season?.let { DownloadingEpisode(seasonNumber = it) })
+
+    @Test
+    fun `a movie has no seasons to wait for`() {
+        assertEquals(true, inLibrary(emptyList(), listOf(season(1))))
+        assertEquals(true, inLibrary(emptyList(), null))
+    }
+
+    @Test
+    fun `without Seerr's seasons it can't be told`() {
+        assertNull(inLibrary(listOf(1), null))
+        assertNull(inLibrary(listOf(1), emptyList()))
+    }
+
+    @Test
+    fun `every requested season has to be in`() {
+        val seasons =
+            listOf(
+                season(1, SeerrAvailability.AVAILABLE),
+                season(2, SeerrAvailability.PARTIALLY_AVAILABLE),
+                season(3, SeerrAvailability.PROCESSING),
+            )
+
+        assertEquals(true, inLibrary(listOf(1, 2), seasons))
+        assertEquals(false, inLibrary(listOf(2, 3), seasons))
+        assertEquals(false, inLibrary(listOf(4), seasons))
+    }
+
+    @Test
+    fun `a partly imported season only counts once its queue is empty`() {
+        val seasons = listOf(season(1, SeerrAvailability.PARTIALLY_AVAILABLE))
+
+        assertEquals(false, inLibrary(listOf(1), seasons, queue = listOf(queuedSeason(1))))
+        assertEquals(true, inLibrary(listOf(1), seasons, queue = emptyList()))
+    }
+
+    @Test
+    fun `a whole season counts whatever is in the queue`() {
+        val seasons = listOf(season(1, SeerrAvailability.AVAILABLE))
+
+        assertEquals(true, inLibrary(listOf(1), seasons, queue = listOf(queuedSeason(1))))
+    }
+
+    @Test
+    fun `a 4K request reads the 4K season status`() {
+        val seasons = listOf(season(1, SeerrAvailability.AVAILABLE, SeerrAvailability.PROCESSING))
+
+        assertEquals(true, inLibrary(listOf(1), seasons))
+        assertEquals(false, inLibrary(listOf(1), seasons, is4k = true))
+    }
+
+    @Test
+    fun `a request's queue only has its own seasons`() {
+        val first = queuedSeason(1)
+        val second = queuedSeason(2)
+
+        assertEquals(listOf(second), requestedQueue(listOf(first, second), listOf(2)))
+        assertEquals(emptyList<DownloadingItem>(), requestedQueue(listOf(first), listOf(2)))
+    }
+
+    @Test
+    fun `a queue entry without a season could be for any request`() {
+        val entry = queuedSeason(null)
+
+        assertEquals(listOf(entry), requestedQueue(listOf(entry), listOf(2)))
+    }
+
+    @Test
+    fun `a movie's queue is left alone`() {
+        val entry = queued("downloading")
+
+        assertEquals(listOf(entry), requestedQueue(listOf(entry), emptyList()))
+        assertNull(requestedQueue(null, emptyList()))
+        assertNull(requestedQueue(null, listOf(1)))
     }
 }

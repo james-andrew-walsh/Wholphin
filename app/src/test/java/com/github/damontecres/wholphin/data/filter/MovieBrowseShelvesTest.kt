@@ -16,7 +16,7 @@ class MovieBrowseShelvesTest {
     private val today = LocalDate.of(2026, 10, 30)
     private val rows = movieBrowseRows(today)
 
-    private fun shelf(index: Int) = (rows[index] as MovieBrowseRow.Items).shelf
+    private fun shelf(index: Int) = (rows[index] as BrowseRow.Items).shelf
 
     private val highlyRated get() = shelf(2)
     private val newReleases get() = shelf(3)
@@ -41,9 +41,9 @@ class MovieBrowseShelvesTest {
                 genreTitle("Thriller"),
                 genreTitle("Animation"),
             )
-        assertEquals(expected, rows.map { (it as? MovieBrowseRow.Items)?.shelf?.title })
-        assertEquals(MovieBrowseRow.Genres, rows[5])
-        assertEquals(MovieBrowseRow.Decades, rows[6])
+        assertEquals(expected, rows.map { (it as? BrowseRow.Items)?.shelf?.title })
+        assertEquals(BrowseRow.Genres, rows[5])
+        assertEquals(BrowseRow.Decades, rows[6])
     }
 
     @Test
@@ -82,7 +82,7 @@ class MovieBrowseShelvesTest {
     @Test
     fun `dates are zero padded`() {
         val filter =
-            (movieBrowseRows(LocalDate.of(2026, 1, 5))[3] as MovieBrowseRow.Items).shelf.filter
+            (movieBrowseRows(LocalDate.of(2026, 1, 5))[3] as BrowseRow.Items).shelf.filter
         assertEquals("2025-07-09", filter.primaryReleaseDateGte)
         assertEquals("2026-01-05", filter.primaryReleaseDateLte)
     }

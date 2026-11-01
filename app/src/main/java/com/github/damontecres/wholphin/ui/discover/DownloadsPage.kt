@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,12 +61,12 @@ import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.api.seerr.RequestApi
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
 import com.github.damontecres.wholphin.api.seerr.model.MediaRequest
-import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadProgress
 import com.github.damontecres.wholphin.data.model.DownloadState
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
+import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.downloadPercent
 import com.github.damontecres.wholphin.data.model.downloadProgress
 import com.github.damontecres.wholphin.data.model.downloadRefreshDelay
@@ -73,6 +74,8 @@ import com.github.damontecres.wholphin.data.model.hasMoreDownloads
 import com.github.damontecres.wholphin.data.model.isDownloadHash
 import com.github.damontecres.wholphin.data.model.keepsRefreshing
 import com.github.damontecres.wholphin.data.model.nextRefreshBatch
+import com.github.damontecres.wholphin.data.model.requestedQueue
+import com.github.damontecres.wholphin.data.model.requestedSeasonsInLibrary
 import com.github.damontecres.wholphin.data.model.seenInQueue
 import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.SeerrServerRepository
@@ -119,7 +122,7 @@ import javax.inject.Inject
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
-// A page costs one GET /request plus one GET /movie for each row, the TV is on weak Wi-Fi
+// A page costs one GET /request plus one GET /movie or /tv for each row, the TV is on weak Wi-Fi
 internal const val DOWNLOADS_PAGE_SIZE = 20
 internal const val MAX_ROWS_PER_REFRESH = 10
 private const val MAX_CONCURRENT_REQUESTS = 3
@@ -127,9 +130,11 @@ private const val ROWS_LOADED_AHEAD = 5
 private val ROW_HEIGHT = 128.dp
 
 /**
- * A movie the user requested
+ * A movie or series the user requested
  *
- * @param item the movie's details, null until they have been fetched
+ * @param type the type of [tmdbId], the same ID can be both a movie and a different series
+ * @param seasons the requested seasons of a series
+ * @param item the details, null until they have been fetched
  * @param jellyfinItemId only set once the user's Jellyfin has returned the item
  * @param seenInQueue whether a download was seen, which tells searching apart from importing
  */
@@ -138,6 +143,8 @@ data class DownloadRow(
     val tmdbId: Int,
     val is4k: Boolean,
     val requestStatus: RequestStatus,
+    val type: SeerrItemType = SeerrItemType.MOVIE,
+    val seasons: List<Int> = emptyList(),
     val requestExists: Boolean = true,
     val item: DiscoverItem? = null,
     val jellyfinItemId: UUID? = null,
@@ -203,7 +210,7 @@ internal fun focusedRowIndex(
  * The detail page for a row, or null if it has no live download to show
  *
  * A row can miss out because Seerr only reads the start of the queue, so it has no ID for the rest.
- * Radarr's ID is only a hash for torrents, and a row without its details has no movie page.
+ * Radarr's and Sonarr's ID is only a hash for torrents, and a row without its details has no page.
  */
 internal fun detailDestination(
     row: DownloadRow,
@@ -226,6 +233,14 @@ private data class DownloadsResult(
     val rows: List<DownloadRow>,
     val fetched: Int,
     val hasMore: Boolean,
+)
+
+/**
+ * What a row needs from Seerr's details of a movie or series
+ */
+private class RequestedMedia(
+    val mediaInfo: MediaInfo?,
+    val createItem: suspend () -> DiscoverItem,
 )
 
 @HiltViewModel
@@ -424,7 +439,7 @@ class DownloadsViewModel
                         .map { row ->
                             async {
                                 limiter.withPermit {
-                                    fetchMovie(row.tmdbId)?.let { updateRow(row, it.mediaInfo, it) }
+                                    fetchMedia(row.type, row.tmdbId)?.let { updateRow(row, it.mediaInfo, it) }
                                 }
                             }
                         }.awaitAll()
@@ -468,7 +483,7 @@ class DownloadsViewModel
             sort = RequestApi.SortRequestGet.ADDED,
             sortDirection = RequestApi.SortDirectionRequestGet.DESC,
             requestedBy = userId,
-            mediaType = RequestApi.MediaTypeRequestGet.MOVIE,
+            mediaType = RequestApi.MediaTypeRequestGet.ALL,
         )
 
         private suspend fun createRows(requests: List<MediaRequest>): List<DownloadRow> =
@@ -484,7 +499,8 @@ class DownloadsViewModel
                 Timber.v("No TMDB ID for request %s", request.id)
                 return null
             }
-            val movie = fetchMovie(tmdbId)
+            val type = SeerrItemType.fromString(request.type, SeerrItemType.MOVIE)
+            val details = fetchMedia(type, tmdbId)
             return updateRow(
                 row =
                     DownloadRow(
@@ -492,55 +508,74 @@ class DownloadsViewModel
                         tmdbId = tmdbId,
                         is4k = request.is4k == true,
                         requestStatus = RequestStatus.from(request.status),
+                        type = type,
+                        seasons = request.seasons?.mapNotNull { it.seasonNumber }.orEmpty().sorted(),
                     ),
-                // Without the movie the row still gets its state, only the title & poster are missing
-                media = movie?.mediaInfo ?: request.media,
-                movie = movie,
+                // Without the details the row still gets its state, only the title & poster are missing
+                media = details?.mediaInfo ?: request.media,
+                details = details,
             )
         }
 
-        private suspend fun fetchMovie(tmdbId: Int): MovieDetails? =
+        private suspend fun fetchMedia(
+            type: SeerrItemType,
+            tmdbId: Int,
+        ): RequestedMedia? =
             try {
-                seerrService.api.moviesApi.movieMovieIdGet(movieId = tmdbId)
+                if (type == SeerrItemType.TV) {
+                    val series = seerrService.api.tvApi.tvTvIdGet(tvId = tmdbId)
+                    RequestedMedia(series.mediaInfo) {
+                        createItem(seerrService.createDiscoverItem(series), series.posterPath)
+                    }
+                } else {
+                    val movie = seerrService.api.moviesApi.movieMovieIdGet(movieId = tmdbId)
+                    RequestedMedia(movie.mediaInfo) {
+                        createItem(seerrService.createDiscoverItem(movie), movie.posterPath)
+                    }
+                }
             } catch (ex: CancellationException) {
                 throw ex
             } catch (ex: Exception) {
-                Timber.w(ex, "Error fetching movie %s", tmdbId)
+                Timber.w(ex, "Error fetching %s %s", type, tmdbId)
                 null
             }
 
         /**
          * @param media the latest media info, null if Seerr no longer has any
-         * @param movie the movie that came from, or null if it could not be fetched
+         * @param details what that came from, or null if it could not be fetched
          */
         private suspend fun updateRow(
             row: DownloadRow,
             media: MediaInfo?,
-            movie: MovieDetails?,
+            details: RequestedMedia?,
         ): DownloadRow {
             val request = media?.requests?.firstOrNull { it.id == row.requestId }
-            val requestRemoved = movie != null && (media == null || (media.requests != null && request == null))
+            val requestRemoved = details != null && (media == null || (media.requests != null && request == null))
             val requestExists = row.requestExists && !requestRemoved
             val requestStatus = request?.let { RequestStatus.from(it.status) } ?: row.requestStatus
-            val queue = if (row.is4k) media?.downloadStatus4k else media?.downloadStatus
+            val queue = requestedQueue(if (row.is4k) media?.downloadStatus4k else media?.downloadStatus, row.seasons)
             val seen = seenInQueue(row.seenInQueue, queue)
             val jellyfinId =
                 (if (row.is4k) media?.jellyfinMediaId4k else media?.jellyfinMediaId)
                     ?.toUUIDOrNull()
                     ?.takeIf { isInJellyfin(it) }
+            val mediaStatus = SeerrAvailability.from(if (row.is4k) media?.status4k else media?.status)
+            val seriesAvailable =
+                mediaStatus == SeerrAvailability.AVAILABLE || mediaStatus == SeerrAvailability.PARTIALLY_AVAILABLE
+            val seasonsInLibrary = requestedSeasonsInLibrary(row.seasons, media?.seasons, row.is4k, queue)
             return row.copy(
                 requestStatus = requestStatus,
                 requestExists = requestExists,
-                item = row.item ?: movie?.let { createItem(it) },
+                item = row.item ?: details?.createItem?.invoke(),
                 jellyfinItemId = jellyfinId,
                 seenInQueue = seen,
                 progress =
                     downloadProgress(
                         requestStatus = requestStatus,
                         requestExists = requestExists,
-                        mediaStatus = SeerrAvailability.from(if (row.is4k) media?.status4k else media?.status),
+                        mediaStatus = if (seriesAvailable && seasonsInLibrary == false) SeerrAvailability.PROCESSING else mediaStatus,
                         queue = queue,
-                        inJellyfin = jellyfinId != null,
+                        inJellyfin = jellyfinId != null && seasonsInLibrary == true,
                         seenInQueue = seen,
                         now = Instant.now(),
                     ),
@@ -560,9 +595,11 @@ class DownloadsViewModel
             }
 
         // The poster can't come from Jellyfin here, it may not have the item yet
-        private suspend fun createItem(movie: MovieDetails): DiscoverItem {
-            val item = seerrService.createDiscoverItem(movie)
-            val posterUrl = seerrService.createImageUrl(ImageType.PRIMARY, movie.posterPath, null)
+        private suspend fun createItem(
+            item: DiscoverItem,
+            posterPath: String?,
+        ): DiscoverItem {
+            val posterUrl = seerrService.createImageUrl(ImageType.PRIMARY, posterPath, null)
             return item.copy(posterUrl = posterUrl ?: item.posterUrl)
         }
 
@@ -573,14 +610,16 @@ class DownloadsViewModel
         fun open(row: DownloadRow) {
             val destination =
                 detailDestination(row)
-                    ?: row.jellyfinItemId?.let { Destination.MediaItem(itemId = it, type = BaseItemKind.MOVIE) }
+                    ?: row.jellyfinItemId?.let {
+                        Destination.MediaItem(itemId = it, type = row.type.baseItemKind ?: BaseItemKind.MOVIE)
+                    }
                     ?: row.item?.let { Destination.DiscoveredItem(it) }
             destination?.let(navigationManager::navigateTo)
         }
     }
 
 /**
- * The current user's requested movies and how far along each one is
+ * The current user's requested movies and series and how far along each one is
  */
 @Composable
 fun DownloadsPage(
@@ -844,12 +883,20 @@ private fun DownloadRowCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                row.item?.releaseDate?.year?.let {
-                    Text(
-                        text = it.toString(),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
+                val seasons =
+                    row.seasons.takeIf { it.isNotEmpty() }?.let {
+                        pluralStringResource(R.plurals.download_seasons, it.size, it.joinToString(", "))
+                    }
+                listOfNotNull(row.item?.releaseDate?.year?.toString(), seasons)
+                    .takeIf { it.isNotEmpty() }
+                    ?.let {
+                        Text(
+                            text = it.joinToString("  •  "),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 Text(
                     text = stringResource(progress.state.stringRes),
                     style = MaterialTheme.typography.bodyMedium,

@@ -2,9 +2,11 @@ package com.github.damontecres.wholphin.ui.discover
 
 import com.github.damontecres.wholphin.api.seerr.MoviesApi
 import com.github.damontecres.wholphin.api.seerr.SeerrApiClient
+import com.github.damontecres.wholphin.api.seerr.TvApi
 import com.github.damontecres.wholphin.api.seerr.model.DownloadingItem
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
 import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
+import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadProgress
 import com.github.damontecres.wholphin.data.model.DownloadState
@@ -20,6 +22,7 @@ import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.ui.nav.Destination
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -52,6 +55,7 @@ class DownloadDetailViewModelTest {
     private val seerrService = mockk<SeerrService>()
     private val seerrApiClient = mockk<SeerrApiClient>()
     private val moviesApi = mockk<MoviesApi>()
+    private val tvApi = mockk<TvApi>()
     private val navigationManager = mockk<NavigationManager>(relaxed = true)
 
     private val item =
@@ -77,6 +81,8 @@ class DownloadDetailViewModelTest {
             progress = seerrProgress,
             item = item,
         )
+    private val seriesItem = item.copy(type = SeerrItemType.TV, title = "Made Up Series")
+    private val seriesDestination = destination.copy(item = seriesItem)
 
     private val liveStatus =
         DownloadStatus(
@@ -84,6 +90,10 @@ class DownloadDetailViewModelTest {
             progress = .5,
             radarr = RadarrStatus(available = true, tracked = true),
         )
+
+    // What the status service sends for any finished torrent that isn't in Radarr's queue
+    private val untrackedFinished =
+        liveStatus.copy(progress = 1.0, radarr = RadarrStatus(available = true, tracked = false))
 
     private var result: DownloadStatusResult = DownloadStatusResult.Success(liveStatus)
     private var fetches = 0
@@ -94,6 +104,7 @@ class DownloadDetailViewModelTest {
     fun setUp() {
         every { seerrService.api } returns seerrApiClient
         every { seerrApiClient.moviesApi } returns moviesApi
+        every { seerrApiClient.tvApi } returns tvApi
         coEvery { statusService.fetch(HASH) } coAnswers {
             fetches++
             result
@@ -102,9 +113,13 @@ class DownloadDetailViewModelTest {
             movieFailure?.let { throw it }
             MovieDetails(id = TMDB_ID, mediaInfo = media)
         }
+        coEvery { tvApi.tvTvIdGet(any(), any()) } coAnswers {
+            movieFailure?.let { throw it }
+            TvDetails(id = TMDB_ID, mediaInfo = media)
+        }
     }
 
-    private fun createViewModel() =
+    private fun createViewModel(destination: Destination.DownloadDetail = this.destination) =
         DownloadDetailViewModel(
             statusService = statusService,
             seerrService = seerrService,
@@ -349,6 +364,144 @@ class DownloadDetailViewModelTest {
         }
 
     @Test
+    fun `without the service a series reads Seerr's series`() =
+        runTest(testDispatcher) {
+            result = failure()
+            media =
+                MediaInfo(
+                    status = SeerrAvailability.PROCESSING.status,
+                    downloadStatus =
+                        listOf(
+                            DownloadingItem(
+                                propertySize = 1000.0,
+                                sizeLeft = 250.0,
+                                status = "downloading",
+                                downloadId = HASH,
+                            ),
+                        ),
+                )
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertEquals(.75f, viewModel.state.value.seerrProgress.fraction)
+            coVerify(exactly = 0) { moviesApi.movieMovieIdGet(any(), any()) }
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `an earlier season being in doesn't finish a series download`() =
+        runTest(testDispatcher) {
+            result = failure()
+            media = MediaInfo(status = SeerrAvailability.PARTIALLY_AVAILABLE.status)
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertFalse(viewModel.state.value.finished)
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `without the service stops once the whole series is in`() =
+        runTest(testDispatcher) {
+            result = failure()
+            media = MediaInfo(status = SeerrAvailability.AVAILABLE.status)
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertTrue(viewModel.state.value.finished)
+            assertTrue(job.isCompleted)
+        }
+
+    @Test
+    fun `a series download keeps going although Radarr doesn't know it`() =
+        runTest(testDispatcher) {
+            result =
+                DownloadStatusResult.Success(
+                    liveStatus.copy(radarr = RadarrStatus(available = true, tracked = false)),
+                )
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertFalse(viewModel.state.value.finished)
+            assertNull(viewModel.state.value.error)
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `a finished torrent doesn't finish a series download`() =
+        runTest(testDispatcher) {
+            result = DownloadStatusResult.Success(untrackedFinished)
+            media = MediaInfo(status = SeerrAvailability.PARTIALLY_AVAILABLE.status)
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertFalse(viewModel.state.value.finished)
+            assertEquals(untrackedFinished, viewModel.state.value.status)
+
+            advanceTimeBy(5_100)
+            assertEquals(2, fetches)
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `a series download still in Seerr's queue goes on`() =
+        runTest(testDispatcher) {
+            result = DownloadStatusResult.Success(untrackedFinished)
+            media =
+                MediaInfo(
+                    status = SeerrAvailability.AVAILABLE.status,
+                    downloadStatus = listOf(DownloadingItem(status = "completed", downloadId = HASH)),
+                )
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertFalse(viewModel.state.value.finished)
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `a seeding torrent ends once the whole series is in`() =
+        runTest(testDispatcher) {
+            result = DownloadStatusResult.Success(untrackedFinished)
+            media = MediaInfo(status = SeerrAvailability.AVAILABLE.status)
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            assertTrue(viewModel.state.value.finished)
+            assertTrue(job.isCompleted)
+        }
+
+    @Test
+    fun `an unfinished series torrent doesn't ask Seerr`() =
+        runTest(testDispatcher) {
+            result = DownloadStatusResult.Success(liveStatus)
+            val viewModel = createViewModel(seriesDestination)
+            val job = startRefreshing(viewModel)
+
+            coVerify(exactly = 0) { tvApi.tvTvIdGet(any(), any()) }
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `a Radarr download that left the queue doesn't need Seerr`() =
+        runTest(testDispatcher) {
+            result = DownloadStatusResult.Success(untrackedFinished)
+            val viewModel = createViewModel()
+            val job = startRefreshing(viewModel)
+
+            assertTrue(viewModel.state.value.finished)
+            assertTrue(job.isCompleted)
+            coVerify(exactly = 0) { moviesApi.movieMovieIdGet(any(), any()) }
+        }
+
+    @Test
+    fun `the series page is the Discover page of the series`() {
+        createViewModel(seriesDestination).openMovie()
+
+        verify { navigationManager.navigateTo(Destination.DiscoveredItem(seriesItem)) }
+    }
+
+    @Test
     fun `retry goes straight away and restarts the backoff`() =
         runTest(testDispatcher) {
             result = failure()
@@ -391,6 +544,11 @@ class DownloadDetailViewModelTest {
     @Test
     fun `a row with a live download opens the detail page`() {
         assertEquals(destination, detailDestination(row(), enabled = true))
+    }
+
+    @Test
+    fun `a series row with a live download opens the detail page too`() {
+        assertEquals(seriesDestination, detailDestination(row(item = seriesItem), enabled = true))
     }
 
     @Test

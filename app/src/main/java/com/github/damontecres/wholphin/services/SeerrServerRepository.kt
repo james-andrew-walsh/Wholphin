@@ -269,6 +269,9 @@ data class CurrentSeerr(
         get() =
             (serverConfig.series4kEnabled ?: false) &&
                 config.hasPermission(SeerrPermission.REQUEST_4K_TV)
+
+    val specialEpisodesEnabled: Boolean
+        get() = serverConfig.enableSpecialEpisodes ?: false
 }
 
 suspend fun seerrLogin(
