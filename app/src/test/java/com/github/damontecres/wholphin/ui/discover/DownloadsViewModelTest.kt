@@ -1,5 +1,6 @@
 package com.github.damontecres.wholphin.ui.discover
 
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.api.seerr.MoviesApi
 import com.github.damontecres.wholphin.api.seerr.RequestApi
 import com.github.damontecres.wholphin.api.seerr.SeerrApiClient
@@ -15,12 +16,20 @@ import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.api.seerr.model.UserUserIdRequestsGet200Response
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadState
+import com.github.damontecres.wholphin.data.model.DownloadStatus
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
+import com.github.damontecres.wholphin.services.CurrentSeerr
+import com.github.damontecres.wholphin.services.DownloadStatusError
+import com.github.damontecres.wholphin.services.DownloadStatusResult
+import com.github.damontecres.wholphin.services.DownloadStatusService
 import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.RemoveRequestResult
+import com.github.damontecres.wholphin.services.RemovedMedia
 import com.github.damontecres.wholphin.services.SeerrServerRepository
 import com.github.damontecres.wholphin.services.SeerrService
+import com.github.damontecres.wholphin.services.SeerrUserConfig
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.successResponse
 import com.github.damontecres.wholphin.util.DataLoadingState
@@ -36,6 +45,7 @@ import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -55,6 +65,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
@@ -78,8 +89,11 @@ class DownloadsViewModelTest {
     private val userLibraryApi = mockk<UserLibraryApi>()
     private val api = mockk<ApiClient>()
     private val navigationManager = mockk<NavigationManager>(relaxed = true)
+    private val statusService = mockk<DownloadStatusService>()
 
     private val userId = MutableStateFlow<Int?>(USER_ID)
+    private val currentSeerr = MutableStateFlow<CurrentSeerr?>(null)
+    private val removedMedia = MutableSharedFlow<RemovedMedia>()
     private val movies = mutableMapOf<Int, MediaInfo>()
     private val movieFetches = mutableListOf<Int>()
     private var movieFailure: Exception? = null
@@ -94,6 +108,8 @@ class DownloadsViewModelTest {
         every { seerrApiClient.tvApi } returns tvApi
         every { seerrService.api } returns seerrApiClient
         every { seerrServerRepository.currentUserId } returns userId
+        every { seerrServerRepository.current } returns currentSeerr
+        every { seerrService.removedMedia } returns removedMedia
         every { api.userLibraryApi } returns userLibraryApi
 
         coEvery { seerrService.createDiscoverItem(any<MovieDetails>()) } coAnswers {
@@ -153,6 +169,7 @@ class DownloadsViewModelTest {
             api = api,
             seerrService = seerrService,
             seerrServerRepository = seerrServerRepository,
+            statusService = statusService,
             navigationManager = navigationManager,
         )
 
@@ -1215,4 +1232,193 @@ class DownloadsViewModelTest {
                 requestApi.requestGet(any(), any(), any(), any(), any(), any(), any())
             }
         }
+
+    private fun canManageRequests() {
+        currentSeerr.value = mockk { every { config } returns SeerrUserConfig(id = USER_ID, permissions = 16) }
+    }
+
+    private fun failedMedia(id: Int) =
+        media(id, status = RequestStatus.FAILURE, availability = SeerrAvailability.PENDING)
+            .copy(id = id)
+            .also { movies[id] = it }
+
+    private fun downloadingMedia(id: Int) =
+        media(id, downloadStatus = listOf(DownloadingItem(status = "downloading", downloadId = HASH)))
+            .copy(id = id)
+            .also { movies[id] = it }
+
+    @Test
+    fun `a failed row is offered removal`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.REMOVE_REQUEST_ENABLED)
+            canManageRequests()
+            failedMedia(1)
+            assertTrue(openedPage(request(1)).rows().single().removable)
+        }
+
+    @Test
+    fun `not to a user who can't manage requests`() =
+        runTest(testDispatcher) {
+            failedMedia(1)
+            assertFalse(openedPage(request(1)).rows().single().removable)
+        }
+
+    @Test
+    fun `nor a healthy row`() =
+        runTest(testDispatcher) {
+            canManageRequests()
+            movies[1] = media(1).copy(id = 1)
+            assertFalse(openedPage(request(1)).rows().single().removable)
+        }
+
+    @Test
+    fun `the status service finds what Seerr doesn't say`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.REMOVE_REQUEST_ENABLED)
+            canManageRequests()
+            downloadingMedia(1)
+            coEvery { statusService.fetch(HASH) } returns
+                DownloadStatusResult.Success(DownloadStatus(state = "stalledDL"))
+            assertTrue(openedPage(request(1)).rows().single().removable)
+        }
+
+    @Test
+    fun `the status service failing says nothing about the download`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.REMOVE_REQUEST_ENABLED)
+            canManageRequests()
+            downloadingMedia(1)
+            coEvery { statusService.fetch(HASH) } returns
+                DownloadStatusResult.Failure(DownloadStatusError.SERVICE_UNAVAILABLE)
+            assertFalse(openedPage(request(1)).rows().single().removable)
+        }
+
+    @Test
+    fun `the status service isn't bothered for a user who can't remove anything`() =
+        runTest(testDispatcher) {
+            downloadingMedia(1)
+            openedPage(request(1))
+            coVerify(exactly = 0) { statusService.fetch(any()) }
+        }
+
+    @Test
+    fun `a movie that isn't out is waiting for its release`() =
+        runTest(testDispatcher) {
+            media(1)
+            coEvery { moviesApi.movieMovieIdGet(1, any()) } returns
+                MovieDetails(id = 1, title = "Movie", status = "Planned", mediaInfo = movies[1])
+            val viewModel = openedPage(request(1))
+            assertEquals(DownloadState.WAITING_FOR_RELEASE, viewModel.rowState())
+        }
+
+    @Test
+    fun `removing asks the service once however often it's pressed`() =
+        runTest(testDispatcher) {
+            media(1)
+            coEvery { seerrService.removeRequest(any(), any()) } returns RemoveRequestResult.Removed
+            val viewModel = openedPage(request(1))
+            val row = viewModel.rows().single()
+            viewModel.remove(row)
+            viewModel.remove(row)
+            assertEquals(setOf(1), viewModel.state.value.removing)
+            advanceUntilIdle()
+
+            assertEquals(emptySet<Int>(), viewModel.state.value.removing)
+            coVerify(exactly = 1) { seerrService.removeRequest(SeerrItemType.MOVIE, 1) }
+        }
+
+    @Test
+    fun `a removal that didn't work keeps the row and says why`() =
+        runTest(testDispatcher) {
+            media(1)
+            coEvery { seerrService.removeRequest(any(), any()) } returns RemoveRequestResult.InLibrary
+            val viewModel = openedPage(request(1))
+            viewModel.remove(viewModel.rows().single())
+            advanceUntilIdle()
+
+            assertEquals(listOf(1), viewModel.rows().map { it.requestId })
+            assertEquals(RemoveRequestResult.InLibrary, viewModel.state.value.removeFailure)
+            viewModel.onRemoveFailureShown()
+            assertEquals(null, viewModel.state.value.removeFailure)
+        }
+
+    @Test
+    fun `a removal from another page drops the rows and what they counted for`() =
+        runTest(testDispatcher) {
+            media(1)
+            media(2)
+            val viewModel = openedPage(request(1), request(2))
+            removedMedia.emit(RemovedMedia(SeerrItemType.MOVIE, 1))
+            advanceUntilIdle()
+
+            assertEquals(listOf(2), viewModel.rows().map { it.requestId })
+            assertEquals(1, viewModel.state.value.fetched)
+        }
+
+    @Test
+    fun `a series with the same ID as a movie isn't dropped with it`() {
+        val state =
+            DownloadsState(
+                rows = DataLoadingState.Success(downloadRows(listOf(1))),
+                fetched = 1,
+            )
+        assertSame(state, state.withoutRemoved(RemovedMedia(SeerrItemType.TV, 1)))
+    }
+
+    @Test
+    fun `every request for what was removed goes with it`() {
+        val rows = downloadRows(listOf(1, 2)).map { it.copy(tmdbId = 9) } + downloadRows(listOf(3))
+        val state = DownloadsState(rows = DataLoadingState.Success(rows), fetched = 3)
+
+        val result = state.withoutRemoved(RemovedMedia(SeerrItemType.MOVIE, 9))
+
+        assertEquals(listOf(3), result.rows.successValue?.map { it.requestId })
+        assertEquals(1, result.fetched)
+    }
+
+    @Test
+    fun `a row already taken off what was fetched isn't taken off twice`() {
+        val state =
+            DownloadsState(
+                rows = DataLoadingState.Success(downloadRows(listOf(1, 2))),
+                fetched = 1,
+                removedRequests = setOf(1),
+            )
+
+        val result = state.withoutRemoved(RemovedMedia(SeerrItemType.MOVIE, 1))
+
+        assertEquals(1, result.fetched)
+        assertEquals(emptySet<Int>(), result.removedRequests)
+    }
+
+    @Test
+    fun `focus moves to the next row when the focused one goes`() {
+        val rows = downloadRows(1..3)
+        assertEquals(3, rowAfterRemoval(rows, rows.filterNot { it.requestId == 2 }, 2))
+    }
+
+    @Test
+    fun `or the one before if it was the last`() {
+        val rows = downloadRows(1..3)
+        assertEquals(2, rowAfterRemoval(rows, rows.filterNot { it.requestId == 3 }, 3))
+    }
+
+    @Test
+    fun `past other rows that went with it`() {
+        val rows = downloadRows(1..4)
+        assertEquals(4, rowAfterRemoval(rows, downloadRows(listOf(1, 4)), 2))
+    }
+
+    @Test
+    fun `focus has nowhere to go without any rows`() {
+        assertEquals(null, rowAfterRemoval(downloadRows(1..1), emptyList(), 1))
+    }
+
+    @Test
+    fun `focus stays when another row goes or the focused row hasn't loaded yet`() {
+        val rows = downloadRows(1..3)
+        assertEquals(null, rowAfterRemoval(rows, rows.filterNot { it.requestId == 3 }, 1))
+        assertEquals(null, rowAfterRemoval(rows, rows, 99))
+        assertEquals(null, rowAfterRemoval(rows, rows, null))
+    }
 }

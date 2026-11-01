@@ -36,6 +36,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -64,32 +65,45 @@ import com.github.damontecres.wholphin.api.seerr.model.MediaRequest
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadProgress
 import com.github.damontecres.wholphin.data.model.DownloadState
+import com.github.damontecres.wholphin.data.model.DownloadStatus
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
+import com.github.damontecres.wholphin.data.model.canRemoveRequest
+import com.github.damontecres.wholphin.data.model.downloadFailedOrStuck
 import com.github.damontecres.wholphin.data.model.downloadPercent
 import com.github.damontecres.wholphin.data.model.downloadProgress
 import com.github.damontecres.wholphin.data.model.downloadRefreshDelay
 import com.github.damontecres.wholphin.data.model.hasMoreDownloads
 import com.github.damontecres.wholphin.data.model.isDownloadHash
+import com.github.damontecres.wholphin.data.model.isMovieReleased
 import com.github.damontecres.wholphin.data.model.keepsRefreshing
 import com.github.damontecres.wholphin.data.model.nextRefreshBatch
+import com.github.damontecres.wholphin.data.model.parseSeerrTime
 import com.github.damontecres.wholphin.data.model.requestedQueue
 import com.github.damontecres.wholphin.data.model.requestedSeasonsInLibrary
 import com.github.damontecres.wholphin.data.model.seenInQueue
+import com.github.damontecres.wholphin.services.DownloadStatusResult
+import com.github.damontecres.wholphin.services.DownloadStatusService
 import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.RemoveRequestResult
+import com.github.damontecres.wholphin.services.RemovedMedia
 import com.github.damontecres.wholphin.services.SeerrServerRepository
 import com.github.damontecres.wholphin.services.SeerrService
+import com.github.damontecres.wholphin.services.SeerrUserConfig
 import com.github.damontecres.wholphin.ui.AspectRatios
 import com.github.damontecres.wholphin.ui.cards.ItemCardImage
 import com.github.damontecres.wholphin.ui.components.CircularProgress
 import com.github.damontecres.wholphin.ui.components.GridTitle
 import com.github.damontecres.wholphin.ui.components.LoadingPage
 import com.github.damontecres.wholphin.ui.components.TextButton
+import com.github.damontecres.wholphin.ui.detail.discover.RemoveRequestDialog
+import com.github.damontecres.wholphin.ui.detail.discover.stringRes
 import com.github.damontecres.wholphin.ui.formatDuration
 import com.github.damontecres.wholphin.ui.ifElse
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
+import com.github.damontecres.wholphin.ui.showToast
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.WholphinDispatchers
@@ -106,6 +120,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -117,6 +132,7 @@ import org.jellyfin.sdk.model.api.ImageType
 import org.jellyfin.sdk.model.serializer.toUUIDOrNull
 import timber.log.Timber
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.time.TimeMark
@@ -137,6 +153,9 @@ private val ROW_HEIGHT = 128.dp
  * @param item the details, null until they have been fetched
  * @param jellyfinItemId only set once the user's Jellyfin has returned the item
  * @param seenInQueue whether a download was seen, which tells searching apart from importing
+ * @param released false if a movie isn't out, which tells searching apart from having to wait
+ * @param activeAt the last time there was a download, or else when the request last changed
+ * @param removable it has failed or is stuck and the user can remove it, which shows on the row
  */
 data class DownloadRow(
     val requestId: Int,
@@ -149,6 +168,9 @@ data class DownloadRow(
     val item: DiscoverItem? = null,
     val jellyfinItemId: UUID? = null,
     val seenInQueue: Boolean = false,
+    val released: Boolean = true,
+    val activeAt: Instant? = null,
+    val removable: Boolean = false,
     val progress: DownloadProgress = DownloadProgress(DownloadState.SEARCHING),
 ) {
     // A row without its details needs another fetch, even if its state is final
@@ -159,6 +181,8 @@ data class DownloadRow(
  * @param loadMoreFailed the last attempt at the next page failed, stays set during a retry so that
  * the retry button doesn't go away until it worked
  * @param removedRequests the loaded rows whose request is gone and was taken off [fetched]
+ * @param removing the rows being removed
+ * @param removeFailure why the last removal didn't work, until that has been shown
  */
 data class DownloadsState(
     val rows: DataLoadingState<List<DownloadRow>> = DataLoadingState.Pending,
@@ -168,6 +192,8 @@ data class DownloadsState(
     val loadMoreFailed: Boolean = false,
     val refreshFailed: Boolean = false,
     val removedRequests: Set<Int> = emptySet(),
+    val removing: Set<Int> = emptySet(),
+    val removeFailure: RemoveRequestResult? = null,
 ) {
     val refreshing: Boolean get() = rows.successValue?.any { it.refreshing } == true
 }
@@ -207,6 +233,44 @@ internal fun focusedRowIndex(
 }
 
 /**
+ * Which row focus belongs on once the row that had it has gone, null if it hasn't gone
+ *
+ * The next row which is still there, or the one before if it was the last. A focused row which was
+ * never in [previous] hasn't gone, it can just be that it hasn't loaded yet.
+ *
+ * @param previous the rows before they changed
+ */
+internal fun rowAfterRemoval(
+    previous: List<DownloadRow>,
+    rows: List<DownloadRow>,
+    focusedRequestId: Int?,
+): Int? {
+    val index = previous.indexOfFirst { it.requestId == focusedRequestId }
+    if (index < 0 || rows.any { it.requestId == focusedRequestId }) return null
+    val remaining = rows.map { it.requestId }.toSet()
+    val after = previous.drop(index + 1).firstOrNull { it.requestId in remaining }
+    return (after ?: previous.take(index).lastOrNull { it.requestId in remaining })?.requestId
+}
+
+/**
+ * Drop the rows of what was removed, every request for it goes along with Seerr's record
+ */
+internal fun DownloadsState.withoutRemoved(removed: RemovedMedia): DownloadsState {
+    val rows = rows.successValue ?: return this
+    val gone =
+        rows
+            .filter { it.type == removed.type && it.tmdbId == removed.tmdbId }
+            .map { it.requestId }
+            .toSet()
+    if (gone.isEmpty()) return this
+    return copy(
+        rows = DataLoadingState.Success(rows.filterNot { it.requestId in gone }),
+        fetched = fetched - (gone - removedRequests).size,
+        removedRequests = removedRequests - gone,
+    )
+}
+
+/**
  * The detail page for a row, or null if it has no live download to show
  *
  * A row can miss out because Seerr only reads the start of the queue, so it has no ID for the rest.
@@ -240,6 +304,7 @@ private data class DownloadsResult(
  */
 private class RequestedMedia(
     val mediaInfo: MediaInfo?,
+    val released: Boolean = true,
     val createItem: suspend () -> DiscoverItem,
 )
 
@@ -250,6 +315,7 @@ class DownloadsViewModel
         private val api: ApiClient,
         private val seerrService: SeerrService,
         private val seerrServerRepository: SeerrServerRepository,
+        private val statusService: DownloadStatusService,
         val navigationManager: NavigationManager,
     ) : ViewModel() {
         private val _state = MutableStateFlow(DownloadsState())
@@ -266,6 +332,9 @@ class DownloadsViewModel
         private var userId: Int? = null
 
         @Volatile
+        private var userConfig: SeerrUserConfig? = null
+
+        @Volatile
         private var lastRefresh: TimeMark = TimeSource.Monotonic.markNow()
 
         init {
@@ -275,6 +344,12 @@ class DownloadsViewModel
                     reloads,
                 ) { userId, _ -> userId }
                     .collectLatest { load(it) }
+            }
+            // This view model stays alive under the Discover pages, which can remove a request too
+            viewModelScope.launchIO {
+                seerrService.removedMedia.collect { removed ->
+                    _state.update { it.withoutRemoved(removed) }
+                }
             }
         }
 
@@ -293,6 +368,7 @@ class DownloadsViewModel
             }
             _state.value =
                 try {
+                    userConfig = seerrServerRepository.current.first()?.config
                     val page = fetchPage(userId, 0)
                     lastRefresh = TimeSource.Monotonic.markNow()
                     DownloadsState(
@@ -510,6 +586,7 @@ class DownloadsViewModel
                         requestStatus = RequestStatus.from(request.status),
                         type = type,
                         seasons = request.seasons?.mapNotNull { it.seasonNumber }.orEmpty().sorted(),
+                        activeAt = parseSeerrTime(request.updatedAt ?: request.createdAt),
                     ),
                 // Without the details the row still gets its state, only the title & poster are missing
                 media = details?.mediaInfo ?: request.media,
@@ -529,7 +606,8 @@ class DownloadsViewModel
                     }
                 } else {
                     val movie = seerrService.api.moviesApi.movieMovieIdGet(movieId = tmdbId)
-                    RequestedMedia(movie.mediaInfo) {
+                    val released = isMovieReleased(movie.status, movie.releaseDate, movie.releases, LocalDate.now())
+                    RequestedMedia(movie.mediaInfo, released) {
                         createItem(seerrService.createDiscoverItem(movie), movie.posterPath)
                     }
                 }
@@ -563,23 +641,53 @@ class DownloadsViewModel
             val seriesAvailable =
                 mediaStatus == SeerrAvailability.AVAILABLE || mediaStatus == SeerrAvailability.PARTIALLY_AVAILABLE
             val seasonsInLibrary = requestedSeasonsInLibrary(row.seasons, media?.seasons, row.is4k, queue)
+            val now = Instant.now()
+            val released = details?.released ?: row.released
+            val activeAt =
+                if (queue.isNullOrEmpty()) {
+                    listOfNotNull(row.activeAt, parseSeerrTime(request?.updatedAt)).maxOrNull()
+                } else {
+                    now
+                }
+            val progress =
+                downloadProgress(
+                    requestStatus = requestStatus,
+                    requestExists = requestExists,
+                    mediaStatus = if (seriesAvailable && seasonsInLibrary == false) SeerrAvailability.PROCESSING else mediaStatus,
+                    queue = queue,
+                    inJellyfin = jellyfinId != null && seasonsInLibrary == true,
+                    seenInQueue = seen,
+                    now = now,
+                    released = released,
+                )
             return row.copy(
                 requestStatus = requestStatus,
                 requestExists = requestExists,
                 item = row.item ?: details?.createItem?.invoke(),
                 jellyfinItemId = jellyfinId,
                 seenInQueue = seen,
-                progress =
-                    downloadProgress(
-                        requestStatus = requestStatus,
-                        requestExists = requestExists,
-                        mediaStatus = if (seriesAvailable && seasonsInLibrary == false) SeerrAvailability.PROCESSING else mediaStatus,
-                        queue = queue,
-                        inJellyfin = jellyfinId != null && seasonsInLibrary == true,
-                        seenInQueue = seen,
-                        now = Instant.now(),
-                    ),
+                released = released,
+                activeAt = activeAt,
+                // Without the details the seasons aren't known, and a partial series can't be offered
+                removable =
+                    details != null &&
+                        requestExists &&
+                        canRemoveRequest(userConfig, media) &&
+                        downloadFailedOrStuck(
+                            state = progress.state,
+                            mediaStatus = mediaStatus,
+                            queue = queue,
+                            status = if (queue.isNullOrEmpty()) null else fetchStatus(progress),
+                            activeAt = activeAt,
+                            now = now,
+                        ),
+                progress = progress,
             )
+        }
+
+        private suspend fun fetchStatus(progress: DownloadProgress): DownloadStatus? {
+            val hash = progress.downloadId?.takeIf { isDownloadHash(it) } ?: return null
+            return (statusService.fetch(hash) as? DownloadStatusResult.Success)?.status
         }
 
         // Seerr's id can be ahead of Jellyfin or stale, only the user's own lookup proves it's playable
@@ -616,6 +724,32 @@ class DownloadsViewModel
                     ?: row.item?.let { Destination.DiscoveredItem(it) }
             destination?.let(navigationManager::navigateTo)
         }
+
+        /**
+         * Remove what a row is for, the row itself goes once [SeerrService.removedMedia] says so
+         */
+        fun remove(row: DownloadRow) {
+            var start = false
+            _state.update {
+                start = row.requestId !in it.removing
+                it.copy(removing = it.removing + row.requestId)
+            }
+            if (!start) return
+            viewModelScope.launchIO {
+                try {
+                    val result = seerrService.removeRequest(row.type, row.tmdbId)
+                    if (result != RemoveRequestResult.Removed) {
+                        _state.update { it.copy(removeFailure = result) }
+                    }
+                } finally {
+                    _state.update { it.copy(removing = it.removing - row.requestId) }
+                }
+            }
+        }
+
+        fun onRemoveFailureShown() {
+            _state.update { it.copy(removeFailure = null) }
+        }
     }
 
 /**
@@ -627,10 +761,19 @@ fun DownloadsPage(
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    var rowToRemove by remember { mutableStateOf<DownloadRow?>(null) }
 
     LifecycleResumeEffect(Unit) {
         viewModel.onResume()
         onPauseOrDispose { viewModel.onPause() }
+    }
+
+    LaunchedEffect(state.removeFailure) {
+        state.removeFailure?.let {
+            showToast(context, context.getString(it.stringRes))
+            viewModel.onRemoveFailureShown()
+        }
     }
 
     // Leaving the page or the app cancels this, so nothing is fetched unless it can be seen
@@ -673,12 +816,23 @@ fun DownloadsPage(
                     rows = rows.data,
                     state = state,
                     onClickRow = viewModel::open,
+                    onClickRemove = { rowToRemove = it },
                     onLoadMore = viewModel::loadMore,
                     onRetryLoadMore = viewModel::retryLoadMore,
                     modifier = modifier,
                 )
             }
         }
+    }
+    rowToRemove?.let { row ->
+        RemoveRequestDialog(
+            title = row.item?.title,
+            onCancel = { rowToRemove = null },
+            onConfirm = {
+                rowToRemove = null
+                viewModel.remove(row)
+            },
+        )
     }
 }
 
@@ -726,6 +880,7 @@ private fun DownloadsList(
     rows: List<DownloadRow>,
     state: DownloadsState,
     onClickRow: (DownloadRow) -> Unit,
+    onClickRemove: (DownloadRow) -> Unit,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
@@ -739,7 +894,16 @@ private fun DownloadsList(
     var focusRestored by remember { mutableStateOf(false) }
     // The last row while the retry button has focus, otherwise null
     var rowBeforeRetry by remember { mutableStateOf<Int?>(null) }
+    var previousRows by remember { mutableStateOf(rows) }
 
+    // The row with focus can go while the page is showing, a remote would have nothing focused
+    LaunchedEffect(rows) {
+        rowAfterRemoval(previousRows, rows, focusedRequestId)?.let {
+            focusedRequestId = it
+            focusRestored = false
+        }
+        previousRows = rows
+    }
     LaunchedEffect(focusedRow, rows.size) {
         if (focusedRow >= rows.size - ROWS_LOADED_AHEAD) onLoadMore.invoke()
     }
@@ -784,11 +948,11 @@ private fun DownloadsList(
                 }
                 DownloadRowCard(
                     row = row,
+                    removing = row.requestId in state.removing,
                     onClick = { onClickRow.invoke(row) },
-                    modifier =
-                        Modifier
-                            .ifElse(restoreFocus, Modifier.focusRequester(focusRequester))
-                            .onFocusChanged { if (it.hasFocus) focusedRequestId = row.requestId },
+                    onClickRemove = { onClickRemove.invoke(row) },
+                    cardModifier = Modifier.ifElse(restoreFocus, Modifier.focusRequester(focusRequester)),
+                    modifier = Modifier.onFocusChanged { if (it.hasFocus) focusedRequestId = row.requestId },
                 )
             }
             val showRetry = state.loadMoreFailed || rowBeforeRetry != null
@@ -823,8 +987,58 @@ private fun DownloadsList(
     }
 }
 
+/**
+ * A row with its removal, if any, as a second button after it. So OK on the row always does the
+ * same thing and Right from the row is how to get to the button.
+ *
+ * @param cardModifier for the row itself, not the button
+ * @param modifier for the row and the button together
+ */
 @Composable
 private fun DownloadRowCard(
+    row: DownloadRow,
+    removing: Boolean,
+    onClick: () -> Unit,
+    onClickRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+    cardModifier: Modifier = Modifier,
+) {
+    // A download can recover with the button focused, which it can't take with it
+    var removeFocused by remember { mutableStateOf(false) }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(ROW_HEIGHT),
+    ) {
+        DownloadRowContent(
+            row = row,
+            onClick = onClick,
+            modifier =
+                cardModifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+        )
+        if (row.removable || removeFocused) {
+            // Stays the same button while removing so that it keeps focus
+            TextButton(
+                onClick = { if (!removing) onClickRemove.invoke() },
+                modifier = Modifier.onFocusChanged { removeFocused = it.isFocused },
+            ) {
+                if (removing) {
+                    CircularProgress(Modifier.size(24.dp))
+                } else {
+                    Text(text = stringResource(R.string.remove_request))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadRowContent(
     row: DownloadRow,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -844,10 +1058,7 @@ private fun DownloadRowCard(
                 pressedContainerColor = MaterialTheme.colorScheme.onSurface,
                 pressedContentColor = MaterialTheme.colorScheme.inverseOnSurface,
             ),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(ROW_HEIGHT),
+        modifier = modifier,
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -978,6 +1189,7 @@ internal val DownloadState.stringRes: Int
         when (this) {
             DownloadState.PENDING_APPROVAL -> R.string.download_state_pending
             DownloadState.SEARCHING -> R.string.download_state_searching
+            DownloadState.WAITING_FOR_RELEASE -> R.string.download_state_waiting_release
             DownloadState.QUEUED -> R.string.download_state_queued
             DownloadState.DOWNLOADING -> R.string.download_state_downloading
             DownloadState.PREPARING -> R.string.download_state_preparing

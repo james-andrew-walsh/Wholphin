@@ -69,6 +69,7 @@ import com.github.damontecres.wholphin.ui.formatBitrate
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.playback.SimpleMediaStream
 import com.github.damontecres.wholphin.ui.roundMinutes
+import com.github.damontecres.wholphin.ui.tryRequestFocus
 import com.github.damontecres.wholphin.util.ExceptionHandler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -452,17 +453,20 @@ fun ConfirmDialog(
     properties: DialogProperties = DialogProperties(),
     elevation: Dp = 1.dp,
     bodyColor: Color = MaterialTheme.colorScheme.onSurface,
+    focusCancel: Boolean = false,
 ) = BasicDialog(
     onDismissRequest = onCancel,
     properties = properties,
     elevation = elevation,
     content = {
-        ConfirmDialogContent(title, body, onCancel, onConfirm, Modifier, bodyColor)
+        ConfirmDialogContent(title, body, onCancel, onConfirm, Modifier, bodyColor, focusCancel)
     },
 )
 
 /**
  * Content for a confirmation dialog
+ *
+ * @param focusCancel start on Cancel, for something that can't be undone
  */
 @Composable
 fun ConfirmDialogContent(
@@ -472,6 +476,7 @@ fun ConfirmDialogContent(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     bodyColor: Color = MaterialTheme.colorScheme.onSurface,
+    focusCancel: Boolean = false,
 ) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -497,6 +502,10 @@ fun ConfirmDialogContent(
         }
 
         item {
+            val cancelFocus = remember { FocusRequester() }
+            if (focusCancel) {
+                LaunchedEffect(Unit) { cancelFocus.tryRequestFocus() }
+            }
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 modifier = Modifier.fillMaxWidth(),
@@ -504,6 +513,7 @@ fun ConfirmDialogContent(
                 TextButton(
                     stringRes = R.string.cancel,
                     onClick = onCancel,
+                    modifier = Modifier.focusRequester(cancelFocus),
                 )
                 TextButton(
                     stringRes = R.string.confirm,

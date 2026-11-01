@@ -80,6 +80,31 @@ data class RadarrStatus(
     val messages: List<String> = emptyList(),
 )
 
+// What qBittorrent calls a download which isn't moving and won't start moving by itself
+private val STUCK_STATES = setOf("error", "missingfiles", "stalleddl", "stoppeddl", "pauseddl")
+
+/**
+ * Whether a download isn't getting anywhere
+ *
+ * That's qBittorrent saying so, nobody having it, or Radarr having a complaint. Radarr blocking the
+ * import is one of those, and the only one that shows once a download is complete.
+ */
+val DownloadStatus.stuck: Boolean
+    get() =
+        state?.lowercase() in STUCK_STATES ||
+            noSeeds ||
+            (
+                radarr.tracked == true &&
+                    (
+                        radarr.trackedState.equals("importBlocked", ignoreCase = true) ||
+                            radarr.trackedStatus?.lowercase() in setOf("warning", "error")
+                    )
+            )
+
+// A new torrent starts with these at 0 as well, so nothing arriving has to be part of this
+private val DownloadStatus.noSeeds: Boolean
+    get() = seedsConnected == 0 && seedsSwarm == 0 && downloadSpeed == 0L && fraction != 1f
+
 /**
  * Samples of the download and upload speeds, oldest first
  *

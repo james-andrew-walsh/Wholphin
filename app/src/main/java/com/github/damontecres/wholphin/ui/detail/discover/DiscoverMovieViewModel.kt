@@ -19,6 +19,7 @@ import com.github.damontecres.wholphin.data.model.Trailer
 import com.github.damontecres.wholphin.data.model.hasPermission
 import com.github.damontecres.wholphin.services.BackdropService
 import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.RemoveRequestResult
 import com.github.damontecres.wholphin.services.SeerrServerRepository
 import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.services.SeerrUserConfig
@@ -241,6 +242,28 @@ class DiscoverMovieViewModel
             }
         }
 
+        /**
+         * Remove the movie from Radarr and Seerr, afterwards the page offers Request again
+         */
+        fun removeRequest() {
+            var start = false
+            _state.update {
+                start = !it.removing
+                it.copy(removing = true)
+            }
+            if (!start) return
+            viewModelScope.launchIO {
+                try {
+                    val result = seerrService.removeRequest(SeerrItemType.MOVIE, item.id)
+                    if (result != RemoveRequestResult.Removed) showToast(context, context.getString(result.stringRes))
+                    fetchAndSetItem().await()
+                    updateCanCancel()
+                } finally {
+                    _state.update { it.copy(removing = false) }
+                }
+            }
+        }
+
         fun requestOnClick() {
             viewModelScope.launchIO {
                 try {
@@ -289,6 +312,7 @@ data class DiscoverMovieState(
     val similar: List<DiscoverItem> = emptyList(),
     val recommended: List<DiscoverItem> = emptyList(),
     val canCancelRequest: Boolean = false,
+    val removing: Boolean = false,
     val profileLoading: LoadingState = LoadingState.Pending,
     val requestData: SeerrRequestData = SeerrRequestData(),
 )

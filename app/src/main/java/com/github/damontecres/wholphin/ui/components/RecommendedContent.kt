@@ -1,18 +1,23 @@
 package com.github.damontecres.wholphin.ui.components
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -148,6 +153,10 @@ class RecommendedViewModel
                         // Report loading success once the first non-empty row is ready
                         _state.update { it.copy(loading = LoadingState.Success) }
                     }
+                }
+                // An empty library has no non-empty row, so this would otherwise load forever
+                _state.update {
+                    if (it.loading == LoadingState.Loading) it.copy(loading = LoadingState.Success) else it
                 }
             }
         }
@@ -362,6 +371,19 @@ fun RecommendedContent(
         viewModel.init()
     }
     val state by viewModel.state.collectAsState()
+
+    if (state.loading == LoadingState.Success &&
+        state.rows.all { it is HomeRowLoadingState.Success && it.items.isEmpty() }
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = modifier.fillMaxSize()) {
+            Text(
+                text = stringResource(R.string.no_results),
+                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.titleLarge,
+            )
+        }
+        return
+    }
 
     when (val st = state.loading) {
         is LoadingState.Error -> {

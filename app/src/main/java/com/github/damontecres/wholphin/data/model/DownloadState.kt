@@ -24,6 +24,7 @@ enum class DownloadState(
 ) {
     PENDING_APPROVAL(true),
     SEARCHING(true),
+    WAITING_FOR_RELEASE(true),
     QUEUED(true),
     DOWNLOADING(true),
     PREPARING(true),
@@ -84,6 +85,7 @@ private fun queueState(item: DownloadingItem): DownloadState =
  * @param inJellyfin whether the user's Jellyfin returned the item
  * @param seenInQueue whether a queue entry was seen earlier, once it is gone the movie was imported
  * @param now the current time
+ * @param released false if a movie isn't out, see [isMovieReleased]
  */
 fun downloadProgress(
     requestStatus: RequestStatus,
@@ -93,6 +95,7 @@ fun downloadProgress(
     inJellyfin: Boolean,
     seenInQueue: Boolean,
     now: Instant,
+    released: Boolean = true,
 ): DownloadProgress {
     if (inJellyfin) return DownloadProgress(DownloadState.READY)
     if (!requestExists) return DownloadProgress(DownloadState.UNAVAILABLE)
@@ -123,7 +126,11 @@ fun downloadProgress(
         return DownloadProgress(DownloadState.UNAVAILABLE)
     }
     return DownloadProgress(
-        if (seenInQueue || available) DownloadState.PREPARING else DownloadState.SEARCHING,
+        when {
+            seenInQueue || available -> DownloadState.PREPARING
+            released -> DownloadState.SEARCHING
+            else -> DownloadState.WAITING_FOR_RELEASE
+        },
     )
 }
 
@@ -206,6 +213,79 @@ fun seenInQueue(
         previous
     } else {
         queue.any { queueState(it) != DownloadState.FAILED }
+    }
+
+// Radarr searches as soon as it's asked to and then at every RSS sync, so by now it's finding nothing
+private val STUCK_AFTER = 2.hours
+
+// `warning` is how Radarr reports a stalled download, and nobody here pauses a download
+private val STALLED_QUEUE_STATUSES = setOf("warning", "paused", "failed")
+
+/**
+ * Whether a download has failed or is stuck for any reason, which offers removal on its row
+ *
+ * It is if any of these hold:
+ * - it failed, or Radarr lost it and Seerr has marked it as deleted
+ * - every entry it has in the queue is stalled, a healthy one beside them is still making progress
+ * - the status service says so, see [DownloadStatus.stuck]
+ * - nothing has been in the queue for [STUCK_AFTER]
+ *
+ * Not being out yet is no problem, and neither is waiting for someone to approve a request.
+ *
+ * @param mediaStatus the Seerr availability, of the 4K version if the request is for 4K
+ * @param queue the queue entries that the request is for
+ * @param status the status service's details of the download, if there are any
+ * @param activeAt the last time there was a queue entry, or else when the request last changed
+ */
+fun downloadFailedOrStuck(
+    state: DownloadState,
+    mediaStatus: SeerrAvailability?,
+    queue: List<DownloadingItem>?,
+    status: DownloadStatus?,
+    activeAt: Instant?,
+    now: Instant,
+): Boolean =
+    when (state) {
+        DownloadState.FAILED -> {
+            true
+        }
+
+        DownloadState.UNAVAILABLE -> {
+            mediaStatus == SeerrAvailability.DELETED
+        }
+
+        DownloadState.SEARCHING,
+        DownloadState.QUEUED,
+        DownloadState.DOWNLOADING,
+        DownloadState.PREPARING,
+        -> {
+            if (queue.isNullOrEmpty()) {
+                activeAt != null &&
+                    java.time.Duration
+                        .between(activeAt, now)
+                        .toKotlinDuration() >= STUCK_AFTER
+            } else {
+                queue.all { it.status?.lowercase() in STALLED_QUEUE_STATUSES } || status?.stuck == true
+            }
+        }
+
+        DownloadState.PENDING_APPROVAL,
+        DownloadState.WAITING_FOR_RELEASE,
+        DownloadState.READY,
+        DownloadState.DECLINED,
+        -> {
+            false
+        }
+    }
+
+/**
+ * Parse a time as Seerr sends it, null if it can't be
+ */
+fun parseSeerrTime(value: String?): Instant? =
+    try {
+        value?.let(Instant::parse)
+    } catch (_: DateTimeParseException) {
+        null
     }
 
 /**

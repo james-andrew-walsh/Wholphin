@@ -44,7 +44,9 @@ import com.github.damontecres.wholphin.data.model.RemoteTrailer
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrPermission
 import com.github.damontecres.wholphin.data.model.Trailer
+import com.github.damontecres.wholphin.data.model.canRemoveRequest
 import com.github.damontecres.wholphin.data.model.hasPermission
+import com.github.damontecres.wholphin.data.model.isWaitingForRelease
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.services.SeerrUserConfig
 import com.github.damontecres.wholphin.services.TrailerService
@@ -66,6 +68,7 @@ import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.ExceptionHandler
 import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.BaseItemKind
+import java.time.LocalDate
 
 @Composable
 fun DiscoverMovieDetails(
@@ -89,6 +92,7 @@ fun DiscoverMovieDetails(
 
     var overviewDialog by remember { mutableStateOf<ItemDetailsDialogInfo?>(null) }
     var showRequestDialog by remember { mutableStateOf(false) }
+    var showRemoveDialog by remember { mutableStateOf(false) }
 
     val requestStr = stringResource(R.string.request)
     val request4kStr = stringResource(R.string.request_4k)
@@ -151,7 +155,20 @@ fun DiscoverMovieDetails(
                 },
                 onClickRating = { viewModel.navigateTo(Destination.WebPage(it, movie.title)) },
                 modifier = modifier,
+                canRemove = canRemoveRequest(userConfig, movie.mediaInfo),
+                removing = state.removing,
+                removeOnClick = { showRemoveDialog = true },
             )
+            if (showRemoveDialog) {
+                RemoveRequestDialog(
+                    title = movie.title,
+                    onCancel = { showRemoveDialog = false },
+                    onConfirm = {
+                        showRemoveDialog = false
+                        viewModel.removeRequest()
+                    },
+                )
+            }
             if (showRequestDialog) {
                 RequestMovieDialog(
                     loading = state.profileLoading,
@@ -210,6 +227,9 @@ fun DiscoverMovieDetailsContent(
     onLongClickSimilar: (Int, DiscoverItem) -> Unit,
     onClickRating: (String) -> Unit,
     modifier: Modifier = Modifier,
+    canRemove: Boolean = false,
+    removing: Boolean = false,
+    removeOnClick: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var position by rememberInt(0)
@@ -289,6 +309,10 @@ fun DiscoverMovieDetailsContent(
                             trailerOnClick.invoke(it)
                         },
                         trailerFocusRequester = focusRequesters[TRAILER_ROW],
+                        canRemove = canRemove,
+                        removing = removing,
+                        removeOnClick = removeOnClick,
+                        waitingForRelease = isWaitingForRelease(movie, LocalDate.now()),
                         modifier =
                             Modifier
                                 .fillMaxWidth()

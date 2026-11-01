@@ -320,6 +320,7 @@ class DownloadStateTest {
             setOf(
                 DownloadState.PENDING_APPROVAL,
                 DownloadState.SEARCHING,
+                DownloadState.WAITING_FOR_RELEASE,
                 DownloadState.QUEUED,
                 DownloadState.DOWNLOADING,
                 DownloadState.PREPARING,

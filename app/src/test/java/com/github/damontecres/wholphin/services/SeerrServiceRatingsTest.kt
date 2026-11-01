@@ -36,6 +36,7 @@ class SeerrServiceRatingsTest {
             seerApi = seerrApi,
             seerrServerRepository = seerrServerRepository,
             imageUrlService = mockk(),
+            jellyfinApi = mockk(),
         )
 
     private val rottenTomatoes =

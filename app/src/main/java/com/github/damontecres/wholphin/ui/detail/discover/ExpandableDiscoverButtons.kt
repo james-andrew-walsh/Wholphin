@@ -6,8 +6,13 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.FocusState
@@ -26,6 +31,11 @@ import com.github.damontecres.wholphin.ui.ifElse
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import kotlin.time.Duration
 
+/**
+ * @param canRemove offer removing the request and starting over
+ * @param removing that is running, the button stays meanwhile so that it keeps focus
+ * @param waitingForRelease a requested movie isn't out, which is why nothing is happening
+ */
 @Composable
 fun ExpandableDiscoverButtons(
     canRequest: Boolean,
@@ -41,8 +51,18 @@ fun ExpandableDiscoverButtons(
     modifier: Modifier = Modifier,
     pendingOnClick: () -> Unit = {},
     trailerFocusRequester: FocusRequester? = null,
+    canRemove: Boolean = false,
+    removing: Boolean = false,
+    removeOnClick: () -> Unit = {},
+    waitingForRelease: Boolean = false,
 ) {
     val firstFocus = remember { FocusRequester() }
+    // The button goes once it has worked and takes focus with it, a remote would have nothing focused
+    var wasRemoving by remember { mutableStateOf(false) }
+    LaunchedEffect(removing) {
+        if (wasRemoving && !removing && !canRemove) firstFocus.tryRequestFocus()
+        wasRemoving = removing
+    }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(8.dp),
@@ -57,7 +77,7 @@ fun ExpandableDiscoverButtons(
 
                 SeerrAvailability.PENDING,
                 SeerrAvailability.PROCESSING,
-                -> R.string.pending
+                -> if (waitingForRelease) R.string.download_state_waiting_release else R.string.pending
 
                 SeerrAvailability.PARTIALLY_AVAILABLE,
                 SeerrAvailability.AVAILABLE,
@@ -162,6 +182,20 @@ fun ExpandableDiscoverButtons(
                     },
                     resume = Duration.ZERO,
                     enabled = canCancel,
+                    modifier =
+                        Modifier
+                            .onFocusChanged(buttonOnFocusChanged),
+                )
+            }
+        }
+
+        if (canRemove) {
+            item("remove") {
+                ExpandablePlayButton(
+                    title = R.string.remove_request,
+                    icon = Icons.Default.Refresh,
+                    onClick = { if (!removing) removeOnClick.invoke() },
+                    resume = Duration.ZERO,
                     modifier =
                         Modifier
                             .onFocusChanged(buttonOnFocusChanged),

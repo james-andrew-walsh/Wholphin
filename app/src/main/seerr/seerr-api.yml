@@ -1333,6 +1333,24 @@ components:
           type: integer
           example: 0
           description: Availability of the 4K media, same values as `status`
+        serviceId:
+          type: integer
+          nullable: true
+          readOnly: true
+          description: The Seerr ID of the Radarr or Sonarr server that has this, which can be 0
+        serviceId4k:
+          type: integer
+          nullable: true
+          readOnly: true
+        externalServiceId:
+          type: integer
+          nullable: true
+          readOnly: true
+          description: The ID in Radarr or Sonarr
+        externalServiceId4k:
+          type: integer
+          nullable: true
+          readOnly: true
         downloadStatus:
           type: array
           readOnly: true

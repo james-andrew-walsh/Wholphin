@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.services
 
 import com.github.damontecres.wholphin.api.seerr.SeerrApiClient
+import com.github.damontecres.wholphin.api.seerr.infrastructure.ClientException
 import com.github.damontecres.wholphin.api.seerr.model.CreditCast
 import com.github.damontecres.wholphin.api.seerr.model.CreditCrew
 import com.github.damontecres.wholphin.api.seerr.model.DiscoverGenresliderMovieGet200ResponseInner
@@ -20,6 +21,9 @@ import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.SeerrPermission
 import com.github.damontecres.wholphin.data.model.hasPermission
+import com.github.damontecres.wholphin.data.model.isInLibrary
+import com.github.damontecres.wholphin.data.model.isRemovable
+import com.github.damontecres.wholphin.data.model.serviceVersions
 import com.github.damontecres.wholphin.ui.components.Genre
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrProfile
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrRequestData
@@ -31,16 +35,63 @@ import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.toLocalDate
 import com.github.damontecres.wholphin.util.TrendingMoviesWeekRequestHandler
 import com.github.damontecres.wholphin.util.TrendingTvWeekRequestHandler
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
+import org.jellyfin.sdk.api.client.ApiClient
+import org.jellyfin.sdk.api.client.extensions.itemsApi
 import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.ImageType
+import org.jellyfin.sdk.model.api.ItemFields
+import org.jellyfin.sdk.model.api.request.GetItemsRequest
 import org.jellyfin.sdk.model.serializer.toUUIDOrNull
+import timber.log.Timber
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 typealias SeerrSearchResult = SearchGet200ResponseResultsInner
+
+private const val HTTP_NOT_FOUND = 404
+private const val LIBRARY_PAGE_SIZE = 500
+
+/**
+ * How trying to remove a request ended. Only [Removed] has taken it out of Seerr.
+ */
+enum class RemoveRequestResult {
+    Removed,
+
+    /** It's in the library or Seerr says it is, nothing was touched */
+    InLibrary,
+
+    /** It couldn't be told that it's safe, nothing was touched */
+    CheckFailed,
+
+    /** Radarr or Sonarr may still have it, so Seerr's record was kept for it not to be orphaned */
+    ServiceFailed,
+
+    /** It's gone from Radarr or Sonarr but Seerr still has the record, trying again finishes this */
+    RecordFailed,
+}
+
+/**
+ * A movie or series that was just removed from Seerr
+ */
+data class RemovedMedia(
+    val type: SeerrItemType,
+    val tmdbId: Int,
+)
+
+/**
+ * What identifies a movie or series, for looking for it in Jellyfin
+ */
+private class LibraryLookup(
+    val kind: BaseItemKind,
+    val media: MediaInfo?,
+    val imdbId: String?,
+)
 
 /**
  * Main access for the current Seerr server (if any)
@@ -54,10 +105,18 @@ class SeerrService
         private val seerApi: SeerrApi,
         private val seerrServerRepository: SeerrServerRepository,
         private val imageUrlService: ImageUrlService,
+        private val jellyfinApi: ApiClient,
     ) {
         val api: SeerrApiClient get() = seerApi.api
 
         val active get() = seerrServerRepository.active
+
+        private val _removedMedia = MutableSharedFlow<RemovedMedia>()
+
+        /**
+         * Tells pages further back that a request has gone, whichever page removed it
+         */
+        val removedMedia: SharedFlow<RemovedMedia> = _removedMedia
 
         suspend fun search(
             query: String,
@@ -288,6 +347,137 @@ class SeerrService
             } else {
                 null
             }
+
+        /**
+         * Take a movie or series out of Radarr or Sonarr and out of Seerr, so it can be requested again
+         *
+         * This deletes files, that's what Seerr tells Radarr and Sonarr to do. So it first looks at
+         * what is true right now and touches nothing unless it's sure. An import can reach Jellyfin
+         * before Seerr's next scan notices, which is why Seerr's word for it isn't enough.
+         *
+         * A torrent stays in the download client, Radarr and Sonarr only stop tracking it.
+         */
+        suspend fun removeRequest(
+            type: SeerrItemType,
+            tmdbId: Int,
+        ): RemoveRequestResult {
+            val lookup =
+                try {
+                    fetchLookup(type, tmdbId)
+                } catch (ex: CancellationException) {
+                    throw ex
+                } catch (ex: Exception) {
+                    Timber.e(ex, "Error fetching %s %s before removing it", type, tmdbId)
+                    return RemoveRequestResult.CheckFailed
+                }
+            val media = lookup.media ?: return removed(type, tmdbId)
+            if (isInLibrary(media)) return RemoveRequestResult.InLibrary
+            if (!isRemovable(media)) return RemoveRequestResult.CheckFailed
+            try {
+                if (isInJellyfin(lookup, tmdbId)) return RemoveRequestResult.InLibrary
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                Timber.e(ex, "Error looking for %s %s in Jellyfin", type, tmdbId)
+                return RemoveRequestResult.CheckFailed
+            }
+
+            val mediaId = media.id.toString()
+            for (is4k in serviceVersions(media)) {
+                try {
+                    api.mediaApi.mediaMediaIdFileDelete(mediaId = mediaId, is4k = is4k)
+                } catch (ex: CancellationException) {
+                    throw ex
+                } catch (ex: Exception) {
+                    // Seerr answers with success when Radarr or Sonarr doesn't have it, so all this
+                    // can tolerate is Seerr's own record having gone in the meantime
+                    if (ex !is ClientException || ex.statusCode != HTTP_NOT_FOUND) {
+                        Timber.e(ex, "Error removing %s %s from Radarr or Sonarr", type, tmdbId)
+                        return RemoveRequestResult.ServiceFailed
+                    }
+                }
+            }
+            try {
+                api.mediaApi.mediaMediaIdDelete(mediaId = mediaId)
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (ex: Exception) {
+                Timber.e(ex, "Error removing %s %s from Seerr", type, tmdbId)
+                return RemoveRequestResult.RecordFailed
+            }
+            return removed(type, tmdbId)
+        }
+
+        private suspend fun removed(
+            type: SeerrItemType,
+            tmdbId: Int,
+        ): RemoveRequestResult {
+            _removedMedia.emit(RemovedMedia(type, tmdbId))
+            return RemoveRequestResult.Removed
+        }
+
+        private suspend fun fetchLookup(
+            type: SeerrItemType,
+            tmdbId: Int,
+        ): LibraryLookup =
+            if (type == SeerrItemType.TV) {
+                val series = api.tvApi.tvTvIdGet(tvId = tmdbId)
+                LibraryLookup(BaseItemKind.SERIES, series.mediaInfo, series.externalIds?.imdbId)
+            } else {
+                val movie = api.moviesApi.movieMovieIdGet(movieId = tmdbId)
+                LibraryLookup(BaseItemKind.MOVIE, movie.mediaInfo, movie.imdbId)
+            }
+
+        /**
+         * Whether the user's Jellyfin has the movie or series, by anything that identifies it
+         *
+         * Jellyfin can't be asked for a provider ID, only whether an item has one, so this goes
+         * through the library. Searching for the title would be cheaper, but a title spelled
+         * differently there would look like it's not in the library and then files get deleted.
+         *
+         * @throws Exception if any part of the library can't be read
+         */
+        private suspend fun isInJellyfin(
+            lookup: LibraryLookup,
+            tmdbId: Int,
+        ): Boolean {
+            val itemIds =
+                listOfNotNull(
+                    lookup.media?.jellyfinMediaId?.toUUIDOrNull(),
+                    lookup.media?.jellyfinMediaId4k?.toUUIDOrNull(),
+                )
+            val providerIds =
+                listOfNotNull(
+                    "tmdb" to tmdbId.toString(),
+                    lookup.media?.tvdbId?.let { "tvdb" to it.toString() },
+                    lookup.imdbId?.let { "imdb" to it },
+                )
+            var seen = 0
+            while (true) {
+                val page =
+                    jellyfinApi.itemsApi
+                        .getItems(
+                            GetItemsRequest(
+                                recursive = true,
+                                includeItemTypes = listOf(lookup.kind),
+                                fields = listOf(ItemFields.PROVIDER_IDS),
+                                enableImages = false,
+                                enableUserData = false,
+                                startIndex = seen,
+                                limit = LIBRARY_PAGE_SIZE,
+                            ),
+                        ).content
+                val found =
+                    page.items.any { item ->
+                        item.id in itemIds ||
+                            item.providerIds.orEmpty().any { (name, id) -> (name.lowercase() to id) in providerIds }
+                    }
+                if (found) return true
+                seen += page.items.size
+                if (seen >= page.totalRecordCount) return false
+                check(page.items.isNotEmpty()) { "Library ended after $seen of ${page.totalRecordCount}" }
+            }
+        }
 
         suspend fun createImageUrl(
             imageType: ImageType,

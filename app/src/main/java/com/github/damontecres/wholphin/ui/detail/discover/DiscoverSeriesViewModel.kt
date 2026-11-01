@@ -16,6 +16,7 @@ import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.Trailer
 import com.github.damontecres.wholphin.services.BackdropService
 import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.RemoveRequestResult
 import com.github.damontecres.wholphin.services.SeerrServerRepository
 import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.services.TrailerService
@@ -334,6 +335,30 @@ class DiscoverSeriesViewModel
             }
         }
 
+        /**
+         * Remove the series from Sonarr and Seerr, afterwards the page offers Request again
+         */
+        fun removeRequest() {
+            var start = false
+            _state.update {
+                start = !it.removing
+                it.copy(removing = true)
+            }
+            if (!start) return
+            viewModelScope.launchIO {
+                try {
+                    val result = seerrService.removeRequest(SeerrItemType.TV, item.id)
+                    if (result != RemoveRequestResult.Removed) showToast(context, context.getString(result.stringRes))
+                    fetchAndSetItem().await()?.let {
+                        updateSeasonStatus(it)
+                        updateCanCancel()
+                    }
+                } finally {
+                    _state.update { it.copy(removing = false) }
+                }
+            }
+        }
+
         fun request(request: TvRequest) {
             viewModelScope.launchIO {
                 state.value.tvSeries.successValue?.let { tv ->
@@ -430,6 +455,7 @@ data class DiscoverSeriesState(
     val similar: List<DiscoverItem> = emptyList(),
     val recommended: List<DiscoverItem> = emptyList(),
     val canCancelRequest: Boolean = false,
+    val removing: Boolean = false,
     val profileLoading: LoadingState = LoadingState.Pending,
     val requestData: SeerrRequestData = SeerrRequestData(),
 )

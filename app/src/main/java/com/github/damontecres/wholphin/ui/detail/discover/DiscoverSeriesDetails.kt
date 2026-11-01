@@ -38,6 +38,7 @@ import com.github.damontecres.wholphin.data.model.DiscoverRating
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrPermission
 import com.github.damontecres.wholphin.data.model.Trailer
+import com.github.damontecres.wholphin.data.model.canRemoveRequest
 import com.github.damontecres.wholphin.data.model.hasPermission
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.services.SeerrUserConfig
@@ -93,6 +94,7 @@ fun DiscoverSeriesDetails(
     var seasonDialog by remember { mutableStateOf<DialogParams?>(null) }
     var moreDialog by remember { mutableStateOf<DialogParams?>(null) }
     var showRequestSeasonDialog by remember { mutableStateOf(false) }
+    var showRemoveDialog by remember { mutableStateOf(false) }
 
     LifecycleResumeEffect(Unit) {
         viewModel.onResumePage()
@@ -157,7 +159,20 @@ fun DiscoverSeriesDetails(
                 },
                 onLongClickPerson = { _, _ -> },
                 onLongClickSimilar = { _, _ -> },
+                canRemove = canRemoveRequest(userConfig, item.mediaInfo),
+                removing = state.removing,
+                removeOnClick = { showRemoveDialog = true },
             )
+            if (showRemoveDialog) {
+                RemoveRequestDialog(
+                    title = item.name,
+                    onCancel = { showRemoveDialog = false },
+                    onConfirm = {
+                        showRemoveDialog = false
+                        viewModel.removeRequest()
+                    },
+                )
+            }
         }
     }
     overviewDialog?.let { info ->
@@ -241,6 +256,9 @@ fun DiscoverSeriesDetailsContent(
     onLongClickPerson: (Int, DiscoverItem) -> Unit,
     onLongClickSimilar: (Int, DiscoverItem) -> Unit,
     modifier: Modifier = Modifier,
+    canRemove: Boolean = false,
+    removing: Boolean = false,
+    removeOnClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -306,6 +324,9 @@ fun DiscoverSeriesDetailsContent(
                                 trailerOnClick.invoke(it)
                             },
                             trailerFocusRequester = focusRequesters[TRAILER_ROW],
+                            canRemove = canRemove,
+                            removing = removing,
+                            removeOnClick = removeOnClick,
                             modifier =
                                 Modifier
                                     .fillMaxWidth()

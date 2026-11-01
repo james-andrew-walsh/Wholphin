@@ -532,6 +532,7 @@
     <string name="downloads_refresh_error">Couldn\'t update, trying again soon</string>
     <string name="download_state_pending">Pending approval</string>
     <string name="download_state_searching">Approved, searching</string>
+    <string name="download_state_waiting_release">Waiting for release</string>
     <string name="download_state_queued">Queued</string>
     <string name="download_state_downloading">Downloading</string>
     <string name="download_state_preparing">Preparing</string>
@@ -539,6 +540,12 @@
     <string name="download_state_failed">Failed</string>
     <string name="download_state_declined">Declined</string>
     <string name="download_state_unavailable">Unavailable</string>
+    <string name="remove_request">Remove and try again</string>
+    <string name="remove_request_confirm">Remove %1$s and start over? Anything downloaded so far for it is deleted.</string>
+    <string name="remove_request_in_library">It\'s in the library, so nothing was removed</string>
+    <string name="remove_request_check_failed">Couldn\'t check the library, so nothing was removed</string>
+    <string name="remove_request_service_failed">Couldn\'t remove it from Radarr or Sonarr, so nothing else was changed</string>
+    <string name="remove_request_record_failed">Removed from Radarr or Sonarr, but Seerr still has the request. Try again</string>
     <string name="download_percent">%1$d%%</string>
     <string name="download_time_left">%1$s left</string>
     <string name="download_detail_movie_page">Movie page</string>
