@@ -21,6 +21,7 @@ import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
 import com.github.damontecres.wholphin.data.model.DiscoverRating
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.services.jellyfinId
 import com.github.damontecres.wholphin.ui.LocalImageUrlService
@@ -49,6 +50,7 @@ fun DiscoverMovieDetailsHeader(
     overviewOnClick: () -> Unit,
     showLogo: Boolean,
     modifier: Modifier = Modifier,
+    ratings: MovieRatings? = null,
 ) {
     val imageUrlService = LocalImageUrlService.current
     val logoImageUrl =
@@ -79,7 +81,7 @@ fun DiscoverMovieDetailsHeader(
         ) {
             val resources = LocalResources.current
             val details =
-                remember(movie, rating, resources) {
+                remember(movie, rating, ratings, resources) {
                     buildList {
                         movie.releaseDate?.let(::add)
                         movie.runtime
@@ -105,10 +107,12 @@ fun DiscoverMovieDetailsHeader(
                             ?.takeIf { it.isNotNullOrBlank() }
                             ?.let(::add)
                     }.let {
+                        // Anything shown in RatingChips isn't repeated here. They don't have the
+                        // audience rating, which is Rotten Tomatoes' and not the IMDb score.
                         listToDotString(
                             it,
                             rating?.audienceRating,
-                            rating?.criticRating?.toFloat(),
+                            rating?.criticRating?.toFloat().takeUnless { ratings?.showsCriticsScore == true },
                         )
                     }
                 }

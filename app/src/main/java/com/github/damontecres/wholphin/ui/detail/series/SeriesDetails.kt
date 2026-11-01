@@ -241,7 +241,7 @@ fun SeriesDetails(
                     viewModel.setFavorite(series.id, !favorite, null)
                 },
                 trailerOnClick = {
-                    TrailerService.onClick(context, it, viewModel::navigateTo)
+                    TrailerService.onClick(context, it, viewModel::navigateTo, state.trailers)
                 },
                 onClickExtra = { _, extra ->
                     viewModel.navigateTo(extra.destination)
@@ -455,18 +455,23 @@ fun SeriesDetailsContent(
                                     }
                                 },
                         )
-                        TrailerButton(
-                            trailers = trailers,
-                            trailerOnClick = trailerOnClick,
-                            modifier =
-                                Modifier.onFocusChanged {
-                                    if (it.isFocused) {
-                                        scope.launch(ExceptionHandler()) {
-                                            bringIntoViewRequester.bringIntoView()
-                                        }
-                                    }
+                        if (TrailerService.showButton(trailers)) {
+                            TrailerButton(
+                                trailers = trailers,
+                                trailerOnClick = {
+                                    position = HEADER_ROW
+                                    trailerOnClick.invoke(it)
                                 },
-                        )
+                                modifier =
+                                    Modifier.onFocusChanged {
+                                        if (it.isFocused) {
+                                            scope.launch(ExceptionHandler()) {
+                                                bringIntoViewRequester.bringIntoView()
+                                            }
+                                        }
+                                    },
+                            )
+                        }
                         if (canDelete) {
                             DeleteButton(
                                 title = series.title ?: "",

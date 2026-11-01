@@ -20,6 +20,7 @@ import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.ChosenStreams
 import com.github.damontecres.wholphin.data.model.BaseItem
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.ui.components.GenreText
 import com.github.damontecres.wholphin.ui.components.HeaderUtils
@@ -41,6 +42,7 @@ fun MovieDetailsHeader(
     bringIntoViewRequester: BringIntoViewRequester,
     overviewOnClick: () -> Unit,
     modifier: Modifier = Modifier,
+    ratings: MovieRatings? = null,
 ) {
     val dto = movie.data
     val context = LocalContext.current
@@ -63,8 +65,13 @@ fun MovieDetailsHeader(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxWidth(.60f),
         ) {
+            val quickDetails = movie.ui.quickDetails
             QuickDetails(
-                movie.ui.quickDetails,
+                // Anything shown in RatingChips isn't repeated here
+                quickDetails.copy(
+                    communityRating = quickDetails.communityRating.takeUnless { ratings?.showsImdbScore == true },
+                    criticRating = quickDetails.criticRating.takeUnless { ratings?.showsCriticsScore == true },
+                ),
                 movie.timeRemainingOrRuntime,
                 Modifier.padding(start = HeaderUtils.startPadding),
             )

@@ -14,6 +14,7 @@ import com.github.damontecres.wholphin.api.seerr.model.TvResult
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.DiscoverItem
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.SeerrPermission
@@ -22,6 +23,7 @@ import com.github.damontecres.wholphin.ui.components.Genre
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrProfile
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrRequestData
 import com.github.damontecres.wholphin.ui.detail.discover.SeerrRootFolder
+import com.github.damontecres.wholphin.ui.detail.discover.getDiscoverRating
 import com.github.damontecres.wholphin.ui.discover.toUUID
 import com.github.damontecres.wholphin.ui.formatBytes
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
@@ -178,6 +180,37 @@ class SeerrService
             } else {
                 null
             }
+
+        /**
+         * Get what can be found out about a movie's ratings. Failing leaves that part out instead
+         * of throwing, and IMDb's page doesn't need Seerr at all.
+         *
+         * ratingscombined fails as a whole when either of its sources does, so that falls back to
+         * just Rotten Tomatoes.
+         */
+        suspend fun movieRatings(
+            tmdbId: Int?,
+            imdbId: String?,
+        ): MovieRatings {
+            val ratings = MovieRatings(imdbUrl = MovieRatings.imdbUrlFor(imdbId))
+            if (tmdbId == null || getDiscoverRating(tmdbId) { active.first() } != true) {
+                return ratings
+            }
+            val combined = getDiscoverRating(tmdbId) { api.moviesApi.movieMovieIdRatingscombinedGet(tmdbId) }
+            val rottenTomatoes =
+                if (combined != null) {
+                    combined.rt
+                } else {
+                    getDiscoverRating(tmdbId) { api.moviesApi.movieMovieIdRatingsGet(tmdbId) }
+                }
+            return ratings.copy(
+                imdbScore = combined?.imdb?.criticsScore?.toFloat(),
+                imdbUrl = ratings.imdbUrl ?: combined?.imdb?.url?.takeIf { MovieRatings.isAllowedRatingPage(it) },
+                rottenTomatoesCritics = rottenTomatoes?.criticsScore,
+                rottenTomatoesAudience = rottenTomatoes?.audienceScore,
+                rottenTomatoesUrl = rottenTomatoes?.url?.takeIf { MovieRatings.isAllowedRatingPage(it) },
+            )
+        }
 
         /**
          * Get the combined movie & TV credits of a person as [DiscoverItem]s

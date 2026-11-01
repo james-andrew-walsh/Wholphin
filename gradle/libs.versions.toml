@@ -25,6 +25,7 @@ tvFoundation = "1.0.0"
 tvMaterial = "1.1.0-alpha01"
 lifecycleRuntimeKtx = "2.11.0"
 activityCompose = "1.13.0"
+webkit = "1.15.0"
 androidx-media3 = "1.11.1"
 coil = "3.6.2"
 jellyfin-sdk = "1.7.1"
@@ -67,6 +68,7 @@ acra-http = { module = "ch.acra:acra-http", version.ref = "acra" }
 acra-limiter = { module = "ch.acra:acra-limiter", version.ref = "acra" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }

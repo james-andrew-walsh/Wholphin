@@ -3,6 +3,7 @@ package com.github.damontecres.wholphin.ui.detail.movie
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.data.ChosenStreams
 import com.github.damontecres.wholphin.data.ExtrasItem
 import com.github.damontecres.wholphin.data.ItemPlaybackRepository
@@ -11,6 +12,8 @@ import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.Chapter
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.ItemPlayback
+import com.github.damontecres.wholphin.data.model.LocalTrailer
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.data.model.Person
 import com.github.damontecres.wholphin.data.model.Trailer
 import com.github.damontecres.wholphin.services.BackdropService
@@ -29,7 +32,6 @@ import com.github.damontecres.wholphin.services.deleteItem
 import com.github.damontecres.wholphin.ui.ItemRowFields
 import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
-import com.github.damontecres.wholphin.ui.letNotEmpty
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.showToast
 import com.github.damontecres.wholphin.util.DataLoadingState
@@ -46,6 +48,7 @@ import kotlinx.coroutines.flow.update
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.libraryApi
 import org.jellyfin.sdk.api.client.extensions.userLibraryApi
+import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.MediaStreamType
 import org.jellyfin.sdk.model.api.request.GetSimilarItemsRequest
 import timber.log.Timber
@@ -118,22 +121,25 @@ class MovieViewModel
                     )
                 val remoteTrailers = trailerService.getRemoteTrailers(movie)
                 val chapters = Chapter.fromDto(movie.data)
+                val isMovie = movie.type == BaseItemKind.MOVIE
+                val imdbId = movie.data.providerIds?.get("Imdb")
                 _state.update {
                     it.copy(
                         loading = DataLoadingState.Success(movie),
                         chosenStreams = chosenStreams,
-                        trailers = remoteTrailers,
+                        // This runs again on resume, keep the local trailers so a focused button doesn't disappear
+                        trailers = it.trailers.filterIsInstance<LocalTrailer>() + remoteTrailers,
                         chapters = chapters,
+                        ratings = it.ratings ?: MovieRatings.initial(imdbId).takeIf { isMovie },
                     )
                 }
                 backdropService.submit(movie)
                 viewModelScope.launchIO {
-                    trailerService.getLocalTrailers(movie).letNotEmpty { localTrailers ->
-                        _state.update {
-                            it.copy(
-                                trailers = localTrailers + remoteTrailers,
-                            )
-                        }
+                    val localTrailers = trailerService.getLocalTrailers(movie)
+                    _state.update {
+                        it.copy(
+                            trailers = localTrailers + remoteTrailers,
+                        )
                     }
                 }
                 viewModelScope.launchIO {
@@ -158,6 +164,13 @@ class MovieViewModel
                         it.copy(
                             discovered = results,
                         )
+                    }
+                }
+                if (BuildConfig.RATING_PAGES_ENABLED && isMovie) {
+                    viewModelScope.launchIO {
+                        val tmdbId = movie.data.providerIds?.get("Tmdb")?.toIntOrNull()
+                        val ratings = seerrService.movieRatings(tmdbId, imdbId)
+                        _state.update { it.copy(ratings = ratings.keepKnown(it.ratings)) }
                     }
                 }
 
@@ -305,6 +318,7 @@ data class MovieState(
     val extras: List<ExtrasItem> = emptyList(),
     val similar: List<BaseItem> = emptyList(),
     val discovered: List<DiscoverItem> = emptyList(),
+    val ratings: MovieRatings? = null,
     val chosenStreams: ChosenStreams? = null,
     val canDelete: Boolean = false,
 ) {

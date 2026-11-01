@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
@@ -188,6 +189,42 @@ fun RequestOrRestoreFocus(
 //        }
     }
 }
+
+/**
+ * Like [RequestOrRestoreFocus], for when [focusRequester] may be attached to something that can
+ * disappear: [fallback] gets focus instead so that focus isn't left nowhere
+ */
+@Composable
+fun RequestOrRestoreFocus(
+    focusRequester: FocusRequester?,
+    fallback: FocusRequester?,
+) {
+    LaunchedEffect(Unit) {
+        // Not tryRequestFocus: requesting on an unattached FocusRequester only logs a warning and
+        // returns false, so tryRequestFocus doesn't tell whether focus went anywhere
+        fun request() =
+            try {
+                focusRequester?.requestFocus() == true
+            } catch (ex: IllegalStateException) {
+                Timber.w(ex, "Failed to request focus")
+                false
+            }
+
+        var focused = request()
+        // Items in a lazy row don't exist until the first layout, so give those a moment
+        repeat(FOCUS_RETRY_FRAMES) {
+            if (!focused && focusRequester != null) {
+                withFrameNanos { }
+                focused = request()
+            }
+        }
+        if (!focused) {
+            fallback?.tryRequestFocus()
+        }
+    }
+}
+
+private const val FOCUS_RETRY_FRAMES = 3
 
 fun Modifier.enableMarquee(focused: Boolean) =
     if (focused) {

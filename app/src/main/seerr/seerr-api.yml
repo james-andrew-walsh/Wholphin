@@ -6642,7 +6642,7 @@ paths:
                         type: string
                         example: 'https://www.imdb.com/title/tt0480249'
                       criticsScore:
-                        type: integer
+                        type: number
                         example: 6.5
   /tv/{tvId}:
     get:

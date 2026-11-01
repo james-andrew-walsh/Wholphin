@@ -4,14 +4,12 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
-import com.github.damontecres.wholphin.api.seerr.model.RelatedVideo
 import com.github.damontecres.wholphin.api.seerr.model.RequestPostRequest
 import com.github.damontecres.wholphin.api.seerr.model.RequestRequestIdPutRequest
 import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DiscoverRating
-import com.github.damontecres.wholphin.data.model.RemoteTrailer
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
@@ -21,7 +19,6 @@ import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.SeerrServerRepository
 import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.services.TrailerService
-import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
@@ -146,14 +143,8 @@ class DiscoverSeriesViewModel
                                 .orEmpty()
                     _state.update { it.copy(people = people) }
 
-                    val trailers =
-                        tv.relatedVideos
-                            ?.filter { it.type == RelatedVideo.Type.TRAILER }
-                            ?.filter { it.name.isNotNullOrBlank() && it.url.isNotNullOrBlank() }
-                            ?.map {
-                                RemoteTrailer(it.name!!, it.url!!, it.site)
-                            }.orEmpty()
-                    _state.update { it.copy(trailers = TrailerService.offered(trailers)) }
+                    val trailers = TrailerService.fromRelatedVideos(tv.relatedVideos)
+                    _state.update { it.copy(trailers = trailers) }
                 } catch (ex: CancellationException) {
                     throw ex
                 } catch (ex: Exception) {
@@ -161,6 +152,17 @@ class DiscoverSeriesViewModel
                     _state.update { it.copy(tvSeries = DataLoadingState.Error(ex)) }
                 }
             }
+
+        /**
+         * Puts the backdrop back, full screen pages opened from here clear it
+         */
+        fun onResumePage() {
+            state.value.tvSeries.successValue?.let { tv ->
+                viewModelScope.launchIO {
+                    backdropService.submit(seerrService.createDiscoverItem(tv))
+                }
+            }
+        }
 
         fun navigateTo(destination: Destination) {
             navigationManager.navigateTo(destination)

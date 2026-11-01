@@ -108,6 +108,32 @@ sealed class Destination(
         override fun toString(): String = "PlaybackList(itemId=$itemId)"
     }
 
+    /**
+     * Plays YouTube trailers inside the app
+     *
+     * @param videoIds the video to play first, followed by those to try if it can't be played
+     * @param title what is being played, for when there is nothing to show
+     */
+    @Serializable
+    data class TrailerPlayer(
+        val videoIds: List<String>,
+        val title: String?,
+    ) : Destination(true) {
+        override fun toString(): String = "TrailerPlayer(videoId=${videoIds.firstOrNull()}, count=${videoIds.size}, hash=${hashCode()})"
+    }
+
+    /**
+     * Shows a rating site's page inside the app
+     *
+     * @param url the page, which has to pass [com.github.damontecres.wholphin.data.model.MovieRatings.isAllowedRatingPage]
+     * @param title what the page is about, for when there is nothing to show
+     */
+    @Serializable
+    data class WebPage(
+        val url: String,
+        val title: String?,
+    ) : Destination(true)
+
     @Serializable
     data class FilteredCollection(
         val itemId: UUID,

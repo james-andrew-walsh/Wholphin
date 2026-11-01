@@ -53,6 +53,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.Trailer
 import com.github.damontecres.wholphin.services.TrailerService
@@ -90,6 +91,7 @@ fun ExpandablePlayButtons(
     chooseVersionParams: ChooseVersionParams?,
     buttonOnFocusChanged: (FocusState) -> Unit,
     modifier: Modifier = Modifier,
+    trailerFocusRequester: FocusRequester? = null,
 ) {
     val resources = LocalResources.current
     val firstFocus = remember { FocusRequester() }
@@ -188,7 +190,10 @@ fun ExpandablePlayButtons(
                 TrailerButton(
                     trailers = trailers,
                     trailerOnClick = trailerOnClick,
-                    modifier = Modifier.onFocusChanged(buttonOnFocusChanged),
+                    modifier =
+                        Modifier
+                            .onFocusChanged(buttonOnFocusChanged)
+                            .ifElse(trailerFocusRequester != null, { Modifier.focusRequester(trailerFocusRequester!!) }),
                 )
             }
         }
@@ -386,18 +391,22 @@ fun ExpandableFaButton(
     }
 }
 
+/**
+ * @param playFirst play the first of [trailers] right away instead of asking which one
+ */
 @Composable
 fun TrailerButton(
     trailers: List<Trailer>,
     trailerOnClick: (Trailer) -> Unit,
     modifier: Modifier = Modifier,
+    playFirst: Boolean = BuildConfig.IN_APP_TRAILERS_ENABLED,
 ) {
     var showDialog by remember { mutableStateOf(false) }
     ExpandableFaButton(
         title =
             if (trailers.isEmpty()) {
                 R.string.no_trailers
-            } else if (trailers.size == 1) {
+            } else if (trailers.size == 1 || playFirst) {
                 R.string.play_trailer
             } else {
                 R.string.trailers_title
@@ -405,7 +414,7 @@ fun TrailerButton(
         iconStringRes = R.string.fa_film,
         enabled = trailers.isNotEmpty(),
         onClick = {
-            if (trailers.size == 1) {
+            if (trailers.size == 1 || playFirst) {
                 trailerOnClick.invoke(trailers.first())
             } else {
                 showDialog = true

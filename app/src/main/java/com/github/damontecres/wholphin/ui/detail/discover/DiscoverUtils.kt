@@ -3,7 +3,6 @@ package com.github.damontecres.wholphin.ui.detail.discover
 import android.content.Context
 import com.github.damontecres.wholphin.api.seerr.infrastructure.ClientException
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
-import com.github.damontecres.wholphin.data.model.DiscoverRating
 import com.github.damontecres.wholphin.services.NavigationManager
 import com.github.damontecres.wholphin.services.jellyfinId
 import com.github.damontecres.wholphin.services.jellyfinIdAsString
@@ -14,10 +13,10 @@ import kotlinx.coroutines.CancellationException
 import org.jellyfin.sdk.model.api.BaseItemKind
 import timber.log.Timber
 
-suspend fun getDiscoverRating(
+suspend fun <T> getDiscoverRating(
     id: Int,
-    func: suspend () -> DiscoverRating,
-): DiscoverRating? =
+    func: suspend () -> T,
+): T? =
     try {
         func.invoke()
     } catch (ex: CancellationException) {

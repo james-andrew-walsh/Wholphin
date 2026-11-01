@@ -3,15 +3,15 @@ package com.github.damontecres.wholphin.ui.detail.discover
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.damontecres.wholphin.BuildConfig
 import com.github.damontecres.wholphin.api.seerr.model.MediaInfo
 import com.github.damontecres.wholphin.api.seerr.model.MediaRequest
 import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
-import com.github.damontecres.wholphin.api.seerr.model.RelatedVideo
 import com.github.damontecres.wholphin.api.seerr.model.RequestPostRequest
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DiscoverRating
-import com.github.damontecres.wholphin.data.model.RemoteTrailer
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.SeerrPermission
@@ -24,7 +24,6 @@ import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.services.SeerrUserConfig
 import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.ui.equalsNotNull
-import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
@@ -99,7 +98,12 @@ class DiscoverMovieViewModel
                 Timber.v("Init for movie %s", item.id)
                 try {
                     val movie = seerrService.api.moviesApi.movieMovieIdGet(movieId = item.id)
-                    _state.update { it.copy(movie = DataLoadingState.Success(movie)) }
+                    _state.update {
+                        it.copy(
+                            movie = DataLoadingState.Success(movie),
+                            ratings = it.ratings ?: MovieRatings.initial(movie.imdbId),
+                        )
+                    }
                     val discoveredItem = seerrService.createDiscoverItem(movie)
                     backdropService.submit(discoveredItem)
 
@@ -113,6 +117,12 @@ class DiscoverMovieViewModel
                                 )
                             }
                         _state.update { it.copy(rating = rating) }
+                    }
+                    if (BuildConfig.RATING_PAGES_ENABLED) {
+                        viewModelScope.launchIO {
+                            val ratings = seerrService.movieRatings(item.id, movie.imdbId)
+                            _state.update { it.copy(ratings = ratings.keepKnown(it.ratings)) }
+                        }
                     }
                     if (state.value.similar.isEmpty()) {
                         viewModelScope.launchIO {
@@ -144,14 +154,8 @@ class DiscoverMovieViewModel
                                 ?.map { seerrService.createDiscoverItem(it) }
                                 .orEmpty()
                     _state.update { it.copy(people = people) }
-                    val trailers =
-                        movie.relatedVideos
-                            ?.filter { it.type == RelatedVideo.Type.TRAILER }
-                            ?.filter { it.name.isNotNullOrBlank() && it.url.isNotNullOrBlank() }
-                            ?.map {
-                                RemoteTrailer(it.name!!, it.url!!, it.site)
-                            }.orEmpty()
-                    _state.update { it.copy(trailers = TrailerService.offered(trailers)) }
+                    val trailers = TrailerService.fromRelatedVideos(movie.relatedVideos)
+                    _state.update { it.copy(trailers = trailers) }
                 } catch (ex: CancellationException) {
                     throw ex
                 } catch (ex: Exception) {
@@ -278,6 +282,7 @@ fun canUserCancelRequest(
 data class DiscoverMovieState(
     val movie: DataLoadingState<MovieDetails> = DataLoadingState.Pending,
     val rating: DiscoverRating? = null,
+    val ratings: MovieRatings? = null,
     val seasons: List<RequestSeason> = emptyList(),
     val trailers: List<Trailer> = emptyList(),
     val people: List<DiscoverItem> = emptyList(),

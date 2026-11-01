@@ -14,7 +14,6 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.data.model.BaseItem
@@ -44,6 +44,7 @@ import com.github.damontecres.wholphin.services.SeerrUserConfig
 import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.services.jellyfinId
 import com.github.damontecres.wholphin.ui.LocalImageUrlService
+import com.github.damontecres.wholphin.ui.RequestOrRestoreFocus
 import com.github.damontecres.wholphin.ui.cards.DiscoverItemCard
 import com.github.damontecres.wholphin.ui.cards.DiscoverPersonRow
 import com.github.damontecres.wholphin.ui.cards.ItemRow
@@ -65,7 +66,6 @@ import com.github.damontecres.wholphin.ui.listToDotString
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.rememberInt
 import com.github.damontecres.wholphin.ui.roundMinutes
-import com.github.damontecres.wholphin.ui.tryRequestFocus
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.ExceptionHandler
 import com.github.damontecres.wholphin.util.successValue
@@ -93,6 +93,11 @@ fun DiscoverSeriesDetails(
     var seasonDialog by remember { mutableStateOf<DialogParams?>(null) }
     var moreDialog by remember { mutableStateOf<DialogParams?>(null) }
     var showRequestSeasonDialog by remember { mutableStateOf(false) }
+
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResumePage()
+        onPauseOrDispose { }
+    }
 
     when (val st = state.tvSeries) {
         is DataLoadingState.Error -> {
@@ -138,7 +143,7 @@ fun DiscoverSeriesDetails(
                         )
                 },
                 trailerOnClick = {
-                    TrailerService.onClick(context, it, viewModel::navigateTo)
+                    TrailerService.onClick(context, it, viewModel::navigateTo, state.trailers)
                 },
                 trailers = state.trailers,
                 requestOnClick = {
@@ -205,6 +210,7 @@ private const val PEOPLE_ROW = SEASONS_ROW + 1
 private const val EXTRAS_ROW = PEOPLE_ROW + 1
 private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val RECOMMENDED_ROW = SIMILAR_ROW + 1
+private const val TRAILER_ROW = RECOMMENDED_ROW + 1
 
 @Composable
 fun DiscoverSeriesDetailsContent(
@@ -235,11 +241,9 @@ fun DiscoverSeriesDetailsContent(
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
     var position by rememberInt()
-    val focusRequesters = remember { List(RECOMMENDED_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(TRAILER_ROW + 1) { FocusRequester() } }
     val playFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        focusRequesters.getOrNull(position)?.tryRequestFocus()
-    }
+    RequestOrRestoreFocus(focusRequesters.getOrNull(position), focusRequesters[HEADER_ROW])
     var moreDialog by remember { mutableStateOf<DialogParams?>(null) }
 
     Box(
@@ -293,7 +297,11 @@ fun DiscoverSeriesDetailsContent(
                             canRequest = userConfig.hasPermission(SeerrPermission.REQUEST),
                             canCancel = canCancel,
                             trailers = trailers,
-                            trailerOnClick = trailerOnClick,
+                            trailerOnClick = {
+                                position = TRAILER_ROW
+                                trailerOnClick.invoke(it)
+                            },
+                            trailerFocusRequester = focusRequesters[TRAILER_ROW],
                             modifier =
                                 Modifier
                                     .fillMaxWidth()

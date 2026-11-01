@@ -33,6 +33,7 @@ import com.github.damontecres.wholphin.data.model.BaseItem
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.Person
 import com.github.damontecres.wholphin.data.model.Trailer
+import com.github.damontecres.wholphin.preferences.DisplayToggle
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.ui.Cards
@@ -51,6 +52,7 @@ import com.github.damontecres.wholphin.ui.components.HeaderUtils
 import com.github.damontecres.wholphin.ui.components.LoadingPage
 import com.github.damontecres.wholphin.ui.components.Optional
 import com.github.damontecres.wholphin.ui.components.PersonContextActions
+import com.github.damontecres.wholphin.ui.components.RatingChips
 import com.github.damontecres.wholphin.ui.data.AddPlaylistViewModel
 import com.github.damontecres.wholphin.ui.data.ChooseVersionParams
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialog
@@ -61,6 +63,7 @@ import com.github.damontecres.wholphin.ui.discover.DiscoverRowData
 import com.github.damontecres.wholphin.ui.letNotEmpty
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.rememberInt
+import com.github.damontecres.wholphin.ui.util.LocalInterfaceCustomization
 import com.github.damontecres.wholphin.ui.util.ResStringProvider
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.DiscoverRequestType
@@ -225,7 +228,7 @@ fun MovieDetails(
                         )
                 },
                 trailerOnClick = {
-                    TrailerService.onClick(context, it, viewModel::navigateTo)
+                    TrailerService.onClick(context, it, viewModel::navigateTo, state.trailers)
                 },
                 onClickExtra = { index, extra ->
                     viewModel.navigateTo(extra.destination)
@@ -233,6 +236,7 @@ fun MovieDetails(
                 onClickDiscover = { index, item ->
                     viewModel.navigateTo(item.destination)
                 },
+                onClickRating = { viewModel.navigateTo(Destination.WebPage(it, movie.title)) },
                 canDelete = state.canDelete,
                 onConfirmDelete = { state.movie?.let { viewModel.deleteItem(it) } },
                 onChooseVersion = { contextActions.onChooseVersion.invoke(movie, it) },
@@ -285,6 +289,8 @@ private const val CHAPTER_ROW = TRAILER_ROW + 1
 private const val EXTRAS_ROW = CHAPTER_ROW + 1
 private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val DISCOVER_ROW = SIMILAR_ROW + 1
+private const val RATING_IMDB_ROW = DISCOVER_ROW + 1
+private const val RATING_RT_ROW = RATING_IMDB_ROW + 1
 
 @Composable
 fun MovieDetailsContent(
@@ -303,6 +309,7 @@ fun MovieDetailsContent(
     onLongClickSimilar: (Int, BaseItem) -> Unit,
     onClickExtra: (Int, ExtrasItem) -> Unit,
     onClickDiscover: (Int, DiscoverItem) -> Unit,
+    onClickRating: (String) -> Unit,
     canDelete: Boolean,
     onConfirmDelete: () -> Unit,
     onChooseVersion: (MediaSourceInfo) -> Unit,
@@ -311,13 +318,13 @@ fun MovieDetailsContent(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var position by rememberInt(0)
-    val focusRequesters = remember { List(DISCOVER_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(RATING_RT_ROW + 1) { FocusRequester() } }
     val dto = movie.data
     val resumePosition = dto.userData?.playbackPositionTicks?.ticks ?: Duration.ZERO
 
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
-    RequestOrRestoreFocus(focusRequesters.getOrNull(position))
+    RequestOrRestoreFocus(focusRequesters.getOrNull(position), focusRequesters[HEADER_ROW])
 
     Box(modifier = modifier) {
         LazyColumn(
@@ -339,11 +346,36 @@ fun MovieDetailsContent(
                         chosenStreams = state.chosenStreams,
                         bringIntoViewRequester = bringIntoViewRequester,
                         overviewOnClick = overviewOnClick,
+                        ratings = state.ratings,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .padding(top = HeaderUtils.topPadding, bottom = 16.dp),
                     )
+                    state.ratings?.let { ratings ->
+                        val displayToggles = LocalInterfaceCustomization.current.enabledDisplayToggles
+                        RatingChips(
+                            ratings = ratings,
+                            imdbFocusRequester = focusRequesters[RATING_IMDB_ROW],
+                            rottenTomatoesFocusRequester = focusRequesters[RATING_RT_ROW],
+                            onClickImdb = {
+                                position = RATING_IMDB_ROW
+                                onClickRating.invoke(it)
+                            },
+                            onClickRottenTomatoes = {
+                                position = RATING_RT_ROW
+                                onClickRating.invoke(it)
+                            },
+                            onFocused = {
+                                scope.launch(ExceptionHandler()) {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            },
+                            showImdb = DisplayToggle.COMMUNITY_RATING in displayToggles,
+                            showRottenTomatoes = DisplayToggle.CRITIC_RATING in displayToggles,
+                            modifier = Modifier.padding(start = HeaderUtils.startPadding),
+                        )
+                    }
                     ExpandablePlayButtons(
                         title = movie.title ?: "",
                         resumePosition = resumePosition,
@@ -369,6 +401,7 @@ fun MovieDetailsContent(
                             position = TRAILER_ROW
                             trailerOnClick.invoke(it)
                         },
+                        trailerFocusRequester = focusRequesters[TRAILER_ROW],
                         canDelete = canDelete,
                         onConfirmDelete = onConfirmDelete,
                         chooseVersionParams =

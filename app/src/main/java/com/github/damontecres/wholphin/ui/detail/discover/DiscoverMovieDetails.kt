@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +39,7 @@ import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DiscoverRating
 import com.github.damontecres.wholphin.data.model.LocalTrailer
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.data.model.RemoteTrailer
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrPermission
@@ -49,6 +49,7 @@ import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.services.SeerrUserConfig
 import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.ui.Cards
+import com.github.damontecres.wholphin.ui.RequestOrRestoreFocus
 import com.github.damontecres.wholphin.ui.cards.DiscoverItemCard
 import com.github.damontecres.wholphin.ui.cards.DiscoverPersonRow
 import com.github.damontecres.wholphin.ui.cards.ItemRow
@@ -56,11 +57,11 @@ import com.github.damontecres.wholphin.ui.cards.SeasonCard
 import com.github.damontecres.wholphin.ui.components.ErrorMessage
 import com.github.damontecres.wholphin.ui.components.HeaderUtils
 import com.github.damontecres.wholphin.ui.components.LoadingPage
+import com.github.damontecres.wholphin.ui.components.RatingChips
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialog
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialogInfo
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.rememberInt
-import com.github.damontecres.wholphin.ui.tryRequestFocus
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.ExceptionHandler
 import kotlinx.coroutines.launch
@@ -110,6 +111,7 @@ fun DiscoverMovieDetails(
                 movie = movie,
                 userConfig = userConfig,
                 rating = state.rating,
+                ratings = state.ratings,
                 canCancel = state.canCancelRequest,
                 people = state.people,
                 trailers = state.trailers,
@@ -145,8 +147,9 @@ fun DiscoverMovieDetails(
                 onLongClickSimilar = { index, similar ->
                 },
                 trailerOnClick = {
-                    TrailerService.onClick(context, it, viewModel::navigateTo)
+                    TrailerService.onClick(context, it, viewModel::navigateTo, state.trailers)
                 },
+                onClickRating = { viewModel.navigateTo(Destination.WebPage(it, movie.title)) },
                 modifier = modifier,
             )
             if (showRequestDialog) {
@@ -179,6 +182,9 @@ private const val CHAPTER_ROW = PEOPLE_ROW + 1
 private const val EXTRAS_ROW = CHAPTER_ROW + 1
 private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val RECOMMENDED_ROW = SIMILAR_ROW + 1
+private const val TRAILER_ROW = RECOMMENDED_ROW + 1
+private const val RATING_IMDB_ROW = TRAILER_ROW + 1
+private const val RATING_RT_ROW = RATING_IMDB_ROW + 1
 
 @Composable
 fun DiscoverMovieDetailsContent(
@@ -186,6 +192,7 @@ fun DiscoverMovieDetailsContent(
     userConfig: SeerrUserConfig?,
     movie: MovieDetails,
     rating: DiscoverRating?,
+    ratings: MovieRatings?,
     canCancel: Boolean,
     people: List<DiscoverItem>,
     trailers: List<Trailer>,
@@ -201,16 +208,15 @@ fun DiscoverMovieDetailsContent(
     onClickPerson: (DiscoverItem) -> Unit,
     onLongClickPerson: (Int, DiscoverItem) -> Unit,
     onLongClickSimilar: (Int, DiscoverItem) -> Unit,
+    onClickRating: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
     var position by rememberInt(0)
-    val focusRequesters = remember { List(RECOMMENDED_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(RATING_RT_ROW + 1) { FocusRequester() } }
 
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
-    LaunchedEffect(Unit) {
-        focusRequesters.getOrNull(position)?.tryRequestFocus()
-    }
+    RequestOrRestoreFocus(focusRequesters.getOrNull(position), focusRequesters[HEADER_ROW])
     Box(modifier = modifier) {
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -229,6 +235,7 @@ fun DiscoverMovieDetailsContent(
                         preferences = preferences,
                         movie = movie,
                         rating = rating,
+                        ratings = ratings,
                         bringIntoViewRequester = bringIntoViewRequester,
                         overviewOnClick = overviewOnClick,
                         showLogo = preferences.appPreferences.interfacePreferences.showLogos,
@@ -237,6 +244,27 @@ fun DiscoverMovieDetailsContent(
                                 .fillMaxWidth()
                                 .padding(top = HeaderUtils.topPadding, bottom = 16.dp),
                     )
+                    ratings?.let {
+                        RatingChips(
+                            ratings = it,
+                            imdbFocusRequester = focusRequesters[RATING_IMDB_ROW],
+                            rottenTomatoesFocusRequester = focusRequesters[RATING_RT_ROW],
+                            onClickImdb = { url ->
+                                position = RATING_IMDB_ROW
+                                onClickRating.invoke(url)
+                            },
+                            onClickRottenTomatoes = { url ->
+                                position = RATING_RT_ROW
+                                onClickRating.invoke(url)
+                            },
+                            onFocused = {
+                                scope.launch(ExceptionHandler()) {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            },
+                            modifier = Modifier.padding(start = HeaderUtils.startPadding),
+                        )
+                    }
                     ExpandableDiscoverButtons(
                         availability =
                             SeerrAvailability.from(movie.mediaInfo?.status)
@@ -256,7 +284,11 @@ fun DiscoverMovieDetailsContent(
                         canRequest = userConfig.hasPermission(SeerrPermission.REQUEST),
                         canCancel = canCancel,
                         trailers = trailers,
-                        trailerOnClick = trailerOnClick,
+                        trailerOnClick = {
+                            position = TRAILER_ROW
+                            trailerOnClick.invoke(it)
+                        },
+                        trailerFocusRequester = focusRequesters[TRAILER_ROW],
                         modifier =
                             Modifier
                                 .fillMaxWidth()

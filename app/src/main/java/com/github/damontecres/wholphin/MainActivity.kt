@@ -580,4 +580,5 @@ private val Destination?.isPlayback: Boolean
     get() =
         this is Destination.Playback ||
             this is Destination.PlaybackList ||
+            this is Destination.TrailerPlayer ||
             this is Destination.Slideshow

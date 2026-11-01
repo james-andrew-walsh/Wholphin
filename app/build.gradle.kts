@@ -166,6 +166,8 @@ configure<ApplicationExtension> {
         val featureMpv = "MPV_ENABLED"
         val featureAv1Decoder = "AV1_DECODER_ENABLED"
         val featureRemoteTrailers = "REMOTE_TRAILERS_ENABLED"
+        val featureInAppTrailers = "IN_APP_TRAILERS_ENABLED"
+        val featureRatingPages = "RATING_PAGES_ENABLED"
         val featureUpstreamNetwork = "UPSTREAM_NETWORK_ENABLED"
         val featureSeerrApiKeyAuth = "SEERR_API_KEY_AUTH_ENABLED"
         val featureMoviesOnlyDiscover = "MOVIES_ONLY_DISCOVER_ENABLED"
@@ -204,6 +206,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMpv, true)
             setFeatureFlag(featureAv1Decoder, true)
             setFeatureFlag(featureRemoteTrailers, true)
+            setFeatureFlag(featureInAppTrailers, false)
+            setFeatureFlag(featureRatingPages, false)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setFeatureFlag(featureMoviesOnlyDiscover, false)
@@ -221,6 +225,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMpv, true)
             setFeatureFlag(featureAv1Decoder, true)
             setFeatureFlag(featureRemoteTrailers, true)
+            setFeatureFlag(featureInAppTrailers, false)
+            setFeatureFlag(featureRatingPages, false)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setFeatureFlag(featureMoviesOnlyDiscover, false)
@@ -238,6 +244,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMpv, true)
             setFeatureFlag(featureAv1Decoder, true)
             setFeatureFlag(featureRemoteTrailers, true)
+            setFeatureFlag(featureInAppTrailers, false)
+            setFeatureFlag(featureRatingPages, false)
             setFeatureFlag(featureUpstreamNetwork, true)
             setFeatureFlag(featureSeerrApiKeyAuth, true)
             setFeatureFlag(featureMoviesOnlyDiscover, false)
@@ -258,6 +266,8 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMpv, false)
             setFeatureFlag(featureAv1Decoder, false)
             setFeatureFlag(featureRemoteTrailers, false)
+            setFeatureFlag(featureInAppTrailers, true)
+            setFeatureFlag(featureRatingPages, true)
             setFeatureFlag(featureUpstreamNetwork, false)
             setFeatureFlag(featureSeerrApiKeyAuth, false)
             setFeatureFlag(featureMoviesOnlyDiscover, true)
@@ -396,6 +406,7 @@ tasks.named("preBuild") {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.webkit)
     implementation(libs.androidx.appcompat)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

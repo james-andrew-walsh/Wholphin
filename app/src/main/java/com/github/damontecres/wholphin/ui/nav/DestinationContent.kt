@@ -3,10 +3,12 @@ package com.github.damontecres.wholphin.ui.nav
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.data.filter.DefaultForGenresFilterOptions
 import com.github.damontecres.wholphin.data.filter.DefaultForStudiosFilterOptions
+import com.github.damontecres.wholphin.data.model.MovieRatings
 import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.preferences.PlayerBackend
 import com.github.damontecres.wholphin.preferences.UserPreferences
@@ -54,6 +56,9 @@ import com.github.damontecres.wholphin.ui.preferences.user.UserProfilePreference
 import com.github.damontecres.wholphin.ui.search.SearchPage
 import com.github.damontecres.wholphin.ui.setup.InstallUpdatePage
 import com.github.damontecres.wholphin.ui.slideshow.SlideshowPage
+import com.github.damontecres.wholphin.ui.trailer.TrailerPlayerPage
+import com.github.damontecres.wholphin.ui.web.WebPagePage
+import com.github.damontecres.wholphin.ui.web.WebPageViewModel
 import org.jellyfin.sdk.model.api.BaseItemKind
 import org.jellyfin.sdk.model.api.CollectionType
 import timber.log.Timber
@@ -114,6 +119,29 @@ fun DestinationContent(
                     destination = destination,
                     modifier = modifier,
                 )
+            }
+        }
+
+        is Destination.TrailerPlayer -> {
+            TrailerPlayerPage(
+                destination = destination,
+                modifier = modifier,
+            )
+        }
+
+        is Destination.WebPage -> {
+            val viewModel =
+                hiltViewModel<WebPageViewModel, WebPageViewModel.Factory>(
+                    creationCallback = { it.create(destination) },
+                )
+            if (MovieRatings.isAllowedRatingPage(destination.url)) {
+                WebPagePage(
+                    destination = destination,
+                    viewModel = viewModel,
+                    modifier = modifier,
+                )
+            } else {
+                LaunchedEffect(destination) { viewModel.close() }
             }
         }
 

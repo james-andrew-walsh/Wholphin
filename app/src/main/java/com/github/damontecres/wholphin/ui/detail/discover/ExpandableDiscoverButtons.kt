@@ -22,6 +22,7 @@ import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.ui.components.ExpandableFaButton
 import com.github.damontecres.wholphin.ui.components.ExpandablePlayButton
 import com.github.damontecres.wholphin.ui.components.TrailerButton
+import com.github.damontecres.wholphin.ui.ifElse
 import com.github.damontecres.wholphin.ui.tryRequestFocus
 import kotlin.time.Duration
 
@@ -39,6 +40,7 @@ fun ExpandableDiscoverButtons(
     buttonOnFocusChanged: (FocusState) -> Unit,
     modifier: Modifier = Modifier,
     pendingOnClick: () -> Unit = {},
+    trailerFocusRequester: FocusRequester? = null,
 ) {
     val firstFocus = remember { FocusRequester() }
     LazyRow(
@@ -172,7 +174,10 @@ fun ExpandableDiscoverButtons(
                 TrailerButton(
                     trailers = trailers,
                     trailerOnClick = trailerOnClick,
-                    modifier = Modifier.onFocusChanged(buttonOnFocusChanged),
+                    modifier =
+                        Modifier
+                            .onFocusChanged(buttonOnFocusChanged)
+                            .ifElse(trailerFocusRequester != null, { Modifier.focusRequester(trailerFocusRequester!!) }),
                 )
             }
         }

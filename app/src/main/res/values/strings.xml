@@ -477,6 +477,13 @@
     <string name="local">Local</string>
     <string name="play_trailer">Play trailer</string>
     <string name="no_trailers">No trailers</string>
+    <string name="trailer_unavailable">This trailer can\'t be played right now.</string>
+    <string name="trailer_app_identity">YouTube didn\'t accept this app\'s identity, so trailers can\'t be played.</string>
+    <string name="trailer_unsupported">The web component on this TV is too old to play trailers.</string>
+    <string name="rating_imdb" translatable="false">IMDb</string>
+    <string name="rating_imdb_score" translatable="false">IMDb %1$.1f</string>
+    <string name="rating_rotten_tomatoes" translatable="false">Rotten Tomatoes</string>
+    <string name="web_page_unavailable">This page can\'t be shown right now.</string>
     <string name="clear_track_choices">Clear track choices</string>
     <string name="dts_x">DTS:X</string>
     <string name="dts_hd">DTS:HD</string>
