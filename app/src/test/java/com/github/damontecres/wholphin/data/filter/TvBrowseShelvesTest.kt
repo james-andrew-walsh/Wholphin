@@ -152,6 +152,6 @@ class TvBrowseShelvesTest {
     @Test
     fun `the shared TV filter list has no year filter`() {
         assertFalse(DiscoverTvYearFilter in discoverTvFilters)
-        assertEquals(discoverTvFilters + DiscoverTvYearFilter, browseTvFilters)
+        assertEquals(discoverTvFilters + DiscoverTvYearFilter + DiscoverLanguageFilter, browseTvFilters)
     }
 }

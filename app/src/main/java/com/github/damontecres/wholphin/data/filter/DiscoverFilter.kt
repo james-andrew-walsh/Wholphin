@@ -6,6 +6,7 @@ import com.github.damontecres.wholphin.api.seerr.SearchApi
 import com.github.damontecres.wholphin.api.seerr.SearchApi.CertificationModeDiscoverTvGet
 import com.github.damontecres.wholphin.api.seerr.model.DiscoverMoviesGet200Response
 import com.github.damontecres.wholphin.api.seerr.model.DiscoverTvGet200Response
+import com.github.damontecres.wholphin.api.seerr.model.LanguagesGet200ResponseInner
 import com.github.damontecres.wholphin.api.seerr.model.TvShowStatus
 import com.github.damontecres.wholphin.ui.data.flip
 import kotlinx.serialization.Serializable
@@ -177,9 +178,11 @@ val discoverMovieFilters =
     )
 
 /**
- * [discoverMovieFilters] plus [DiscoverMovieYearFilter], only for the movie browse grids
+ * [discoverMovieFilters] plus [DiscoverMovieYearFilter] and [DiscoverLanguageFilter], only for the
+ * movie browse grids
  */
-val browseMovieFilters: List<DiscoverFilterBy<*>> = discoverMovieFilters + DiscoverMovieYearFilter
+val browseMovieFilters: List<DiscoverFilterBy<*>> =
+    discoverMovieFilters + DiscoverMovieYearFilter + DiscoverLanguageFilter
 
 val discoverTvFilters =
     listOf(
@@ -191,9 +194,11 @@ val discoverTvFilters =
     )
 
 /**
- * [discoverTvFilters] plus [DiscoverTvYearFilter], only for the TV browse grids
+ * [discoverTvFilters] plus [DiscoverTvYearFilter] and [DiscoverLanguageFilter], only for the TV
+ * browse grids
  */
-val browseTvFilters: List<DiscoverFilterBy<*>> = discoverTvFilters + DiscoverTvYearFilter
+val browseTvFilters: List<DiscoverFilterBy<*>> =
+    discoverTvFilters + DiscoverTvYearFilter + DiscoverLanguageFilter
 
 /**
  * A way to filter discover
@@ -305,6 +310,32 @@ data object DiscoverRatingFilter : DiscoverFilterBy<Int> {
         filter: DiscoverFilter,
     ): DiscoverFilter = filter.copy(voteAverageGte = value)
 }
+
+/**
+ * The original language, as an ISO 639-1 code
+ */
+data object DiscoverLanguageFilter : DiscoverFilterBy<String> {
+    override val stringRes: Int = R.string.language
+
+    override val supportMultiple: Boolean = false
+
+    override fun get(filter: DiscoverFilter): String? = filter.language
+
+    override fun set(
+        value: String?,
+        filter: DiscoverFilter,
+    ): DiscoverFilter = filter.copy(language = value)
+}
+
+/**
+ * The values of [DiscoverLanguageFilter]: English first, then the rest by English name. TMDB's
+ * "No Language" entry is left out.
+ */
+fun discoverLanguageOptions(languages: List<LanguagesGet200ResponseInner>): List<FilterValueOption> =
+    languages
+        .filter { !it.iso6391.isNullOrBlank() && !it.englishName.isNullOrBlank() && it.iso6391 != "xx" }
+        .sortedWith(compareBy({ it.iso6391 != "en" }, { it.englishName }))
+        .map { FilterValueOption(it.englishName!!, it.iso6391!!) }
 
 /**
  * An inclusive range of release dates or first air dates, either side can be open

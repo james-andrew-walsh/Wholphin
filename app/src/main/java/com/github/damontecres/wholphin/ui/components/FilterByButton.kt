@@ -43,6 +43,7 @@ import com.github.damontecres.wholphin.data.filter.CommunityRatingFilter
 import com.github.damontecres.wholphin.data.filter.DecadeFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
+import com.github.damontecres.wholphin.data.filter.DiscoverLanguageFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieStudiosFilter
@@ -621,6 +622,7 @@ fun DiscoverFilterByButton(
 
                                     DiscoverMovieYearFilter,
                                     DiscoverTvYearFilter,
+                                    DiscoverLanguageFilter,
                                     -> {
                                         currentValue == value.value
                                     }
@@ -718,6 +720,13 @@ fun DiscoverFilterByButton(
                                         -> {
                                             filterOption.set(
                                                 value.value as DiscoverYearRange,
+                                                current,
+                                            )
+                                        }
+
+                                        DiscoverLanguageFilter -> {
+                                            filterOption.set(
+                                                if (isSelected) null else value.value as String,
                                                 current,
                                             )
                                         }

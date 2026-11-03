@@ -181,6 +181,6 @@ class MovieBrowseShelvesTest {
     @Test
     fun `the shared movie filter list has no year filter`() {
         assertFalse(DiscoverMovieYearFilter in discoverMovieFilters)
-        assertEquals(discoverMovieFilters + DiscoverMovieYearFilter, browseMovieFilters)
+        assertEquals(discoverMovieFilters + DiscoverMovieYearFilter + DiscoverLanguageFilter, browseMovieFilters)
     }
 }

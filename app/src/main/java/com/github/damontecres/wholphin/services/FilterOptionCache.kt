@@ -6,6 +6,7 @@ import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.filter.CommunityRatingFilter
 import com.github.damontecres.wholphin.data.filter.DecadeFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
+import com.github.damontecres.wholphin.data.filter.DiscoverLanguageFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieStudiosFilter
@@ -26,6 +27,7 @@ import com.github.damontecres.wholphin.data.filter.PlayedFilter
 import com.github.damontecres.wholphin.data.filter.StudioFilter
 import com.github.damontecres.wholphin.data.filter.VideoTypeFilter
 import com.github.damontecres.wholphin.data.filter.YearFilter
+import com.github.damontecres.wholphin.data.filter.discoverLanguageOptions
 import com.github.damontecres.wholphin.data.filter.movieYearFilterOptions
 import com.github.damontecres.wholphin.data.filter.tvYearFilterOptions
 import com.github.damontecres.wholphin.services.hilt.IoCoroutineScope
@@ -271,6 +273,10 @@ class FilterOptionCache
 
                 DiscoverTvYearFilter -> {
                     tvYearFilterOptions(LocalDate.now())
+                }
+
+                DiscoverLanguageFilter -> {
+                    discoverLanguageOptions(seerrService.api.tmdbApi.languagesGet())
                 }
             }
         }
