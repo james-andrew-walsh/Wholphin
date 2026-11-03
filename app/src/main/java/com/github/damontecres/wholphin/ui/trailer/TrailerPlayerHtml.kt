@@ -54,7 +54,9 @@ fun trailerLoadScript(videoId: String): String =
 /**
  * The page that hosts YouTube's player for [videoId]
  *
- * The player has to be left as YouTube provides it, this only reports what it does.
+ * The player has to be left as YouTube provides it, this only reports what it does. The one
+ * exception is captions: YouTube can turn them on by itself and the remote can't reach its
+ * captions button, so the captions module is unloaded whenever it loads.
  *
  * @throws IllegalArgumentException if [videoId] isn't a valid ID
  */
@@ -71,13 +73,25 @@ fun trailerPlayerHtml(
     <script>
     var player;
     function post(m){$TRAILER_BRIDGE.postMessage(JSON.stringify(m))}
+    var unloading=false;
+    function noCaptions(p,always){
+      if(unloading){return}
+      unloading=true;
+      try{
+        var o=p.getOptions?p.getOptions():[];
+        if(always||o.indexOf('captions')>=0){p.unloadModule('captions')}
+        if(o.indexOf('cc')>=0){p.unloadModule('cc')}
+      }catch(x){}
+      unloading=false;
+    }
     function onYouTubeIframeAPIReady(){
       player=new YT.Player('player',{
         width:'100%',height:'100%',videoId:${checkedVideoId(videoId)},
         playerVars:{autoplay:1,controls:1,enablejsapi:1,fs:0,iv_load_policy:3,rel:0,origin:${jsString(origin)}},
         events:{
           onReady:function(e){post({t:'ready'});e.target.getIframe().focus()},
-          onStateChange:function(e){post({t:'state',v:e.data})},
+          onStateChange:function(e){post({t:'state',v:e.data});if(e.data===1){noCaptions(e.target,true)}},
+          onApiChange:function(e){noCaptions(e.target,false)},
           onError:function(e){post({t:'error',v:e.data})},
           onAutoplayBlocked:function(){post({t:'blocked'})}
         }

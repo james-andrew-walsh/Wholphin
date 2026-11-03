@@ -19,6 +19,14 @@ class TrailerPlayerHtmlTest {
     }
 
     @Test
+    fun `Captions are unloaded when they load and when playing starts`() {
+        val html = trailerPlayerHtml(videoId, origin)
+        Assert.assertTrue(html.contains("p.unloadModule('captions')"))
+        Assert.assertTrue(html.contains("onApiChange:function(e){noCaptions(e.target,false)}"))
+        Assert.assertTrue(html.contains("if(e.data===1){noCaptions(e.target,true)}"))
+    }
+
+    @Test
     fun `Debug builds use their own origin`() {
         Assert.assertEquals("https://app.ourflix.debug", trailerOrigin("app.ourflix.debug"))
     }
