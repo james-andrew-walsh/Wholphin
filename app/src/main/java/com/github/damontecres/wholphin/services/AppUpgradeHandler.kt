@@ -14,6 +14,7 @@ import com.github.damontecres.wholphin.data.model.JellyfinUser
 import com.github.damontecres.wholphin.data.model.RememberedTab
 import com.github.damontecres.wholphin.preferences.AppPreference
 import com.github.damontecres.wholphin.preferences.AppPreferences
+import com.github.damontecres.wholphin.preferences.DpadSeekMode
 import com.github.damontecres.wholphin.preferences.ExperimentalPreference
 import com.github.damontecres.wholphin.preferences.ScreensaverPreference
 import com.github.damontecres.wholphin.preferences.update
@@ -119,6 +120,27 @@ class AppUpgradeHandler
         }
 
         /**
+         * Defaults this build changes for an install that already exists, each once. The Ourflix
+         * build keeps one version number, so [run] doesn't happen when it's updated.
+         */
+        suspend fun applyBuildDefaults() {
+            if (!BuildConfig.TRICKPLAY_SEEK_DEFAULT) return
+            try {
+                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                if (prefs.getBoolean(TRICKPLAY_SEEK_DEFAULT_KEY, false)) return
+                // Seeking with the D-pad shows the frame where it would land. Settings can still
+                // change it, and this doesn't run again to undo that.
+                appPreferences.updateData {
+                    it.updatePlaybackPreferences { dpadSeekMode = DpadSeekMode.SEEKBAR_TRICKPLAY }
+                }
+                prefs.edit(true) { putBoolean(TRICKPLAY_SEEK_DEFAULT_KEY, true) }
+                Timber.i("D-pad seek mode set to trickplay")
+            } catch (ex: Exception) {
+                Timber.e(ex, "Exception setting the D-pad seek mode")
+            }
+        }
+
+        /**
          * Copies the font file used by MPV subtitles to the app's files directory
          */
         fun copySubfont(overwrite: Boolean) {
@@ -148,6 +170,7 @@ class AppUpgradeHandler
             const val VERSION_NAME_CURRENT_KEY = "version.current.name"
             const val VERSION_CODE_CURRENT_KEY = "version.current.code"
             const val UPGRADE_BASELINE_KEY = "version.upgrade.baseline"
+            const val TRICKPLAY_SEEK_DEFAULT_KEY = "defaults.dpad_seek_trickplay"
 
             /**
              * The version to run [upgradeApp] from. A flavor with its own version numbers can't

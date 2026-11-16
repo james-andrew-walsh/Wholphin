@@ -175,6 +175,8 @@ configure<ApplicationExtension> {
         val featureDownloadsPage = "DOWNLOADS_PAGE_ENABLED"
         val featureQueuePage = "QUEUE_PAGE_ENABLED"
         val featureRemoveRequest = "REMOVE_REQUEST_ENABLED"
+        // D-pad seeking shows the seek bar with frame thumbnails by default
+        val featureTrickplaySeek = "TRICKPLAY_SEEK_DEFAULT"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
 
@@ -218,6 +220,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDownloadsPage, false)
             setFeatureFlag(featureQueuePage, false)
             setFeatureFlag(featureRemoveRequest, false)
+            setFeatureFlag(featureTrickplaySeek, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
         }
@@ -240,6 +243,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDownloadsPage, false)
             setFeatureFlag(featureQueuePage, false)
             setFeatureFlag(featureRemoveRequest, false)
+            setFeatureFlag(featureTrickplaySeek, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
         }
@@ -262,6 +266,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDownloadsPage, false)
             setFeatureFlag(featureQueuePage, false)
             setFeatureFlag(featureRemoveRequest, false)
+            setFeatureFlag(featureTrickplaySeek, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
         }
@@ -287,6 +292,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureDownloadsPage, true)
             setFeatureFlag(featureQueuePage, true)
             setFeatureFlag(featureRemoveRequest, true)
+            setFeatureFlag(featureTrickplaySeek, true)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // The upstream release this is merged with, raise it with each upstream merge
             setUpgradeBaseline("1.0.9")

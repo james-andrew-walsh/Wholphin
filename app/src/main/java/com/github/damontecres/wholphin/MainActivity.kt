@@ -453,6 +453,8 @@ class MainActivityViewModel
         fun appStart(intent: Intent?) {
             viewModelScope.launchDefault {
                 mutex.withLock {
+                    // Before the intent, which can go straight to playback and skip the rest
+                    appUpgradeHandler.applyBuildDefaults()
                     try {
                         val result = intent?.let { intentService.parseIntent(intent) }
                         when (result) {

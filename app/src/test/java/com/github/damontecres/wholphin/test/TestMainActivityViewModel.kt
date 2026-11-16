@@ -88,6 +88,7 @@ class TestMainActivityViewModel {
         WholphinDispatchers.configure(testDispatcher)
         every { appUpgradeHandler.needUpgrade() } returns false
         every { appUpgradeHandler.copySubfont(any()) } returns Unit
+        coEvery { appUpgradeHandler.applyBuildDefaults() } returns Unit
         every { serverRepository.serverDao } returns serverDao
         coEvery { serverDao.getServer(serverId) } returns
             JellyfinServerUsers(

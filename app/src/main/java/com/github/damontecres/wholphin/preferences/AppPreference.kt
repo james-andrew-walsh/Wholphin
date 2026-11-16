@@ -678,7 +678,8 @@ sealed interface AppPreference<Pref, T> {
         val DpadSeekModePref =
             AppChoicePreference<AppPreferences, DpadSeekMode>(
                 title = R.string.d_pad_seek_mode_title,
-                defaultValue = DpadSeekMode.SEEKBAR_MINIMAL,
+                defaultValue =
+                    if (BuildConfig.TRICKPLAY_SEEK_DEFAULT) DpadSeekMode.SEEKBAR_TRICKPLAY else DpadSeekMode.SEEKBAR_MINIMAL,
                 getter = { it.playbackPreferences.dpadSeekMode },
                 setter = { prefs, value ->
                     prefs.updatePlaybackPreferences { dpadSeekMode = value }
