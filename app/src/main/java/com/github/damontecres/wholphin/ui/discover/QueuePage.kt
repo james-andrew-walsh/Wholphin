@@ -58,6 +58,7 @@ import com.github.damontecres.wholphin.data.model.QueueProblem
 import com.github.damontecres.wholphin.data.model.QueueRow
 import com.github.damontecres.wholphin.data.model.QueueStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
+import com.github.damontecres.wholphin.data.model.SeerrItemType
 import com.github.damontecres.wholphin.data.model.downloadPercent
 import com.github.damontecres.wholphin.data.model.formatCountdown
 import com.github.damontecres.wholphin.data.model.formatSpeed
@@ -159,15 +160,24 @@ internal fun removeConfirmed(
 /**
  * The Discover page for a row, null for a row which isn't a movie or series
  */
-internal fun queueDestination(row: QueueRow): Destination.DiscoveredItem? {
-    val type = row.itemType ?: return null
-    val tmdbId = row.tmdbId ?: return null
+internal fun queueDestination(row: QueueRow): Destination.DiscoveredItem? =
+    discoveredItemDestination(row.itemType, row.tmdbId, row.title)
+
+/**
+ * The Discover page for a movie or series, null without both a type and an ID
+ */
+internal fun discoveredItemDestination(
+    type: SeerrItemType?,
+    tmdbId: Int?,
+    title: String,
+): Destination.DiscoveredItem? {
+    if (type == null || tmdbId == null) return null
     // The page fetches the rest by the ID
     return Destination.DiscoveredItem(
         DiscoverItem(
             id = tmdbId,
             type = type,
-            title = row.title,
+            title = title,
             subtitle = null,
             overview = null,
             availability = SeerrAvailability.UNKNOWN,

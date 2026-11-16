@@ -47,6 +47,7 @@ import com.github.damontecres.wholphin.ui.discover.DiscoverRequestGrid
 import com.github.damontecres.wholphin.ui.discover.DownloadDetailPage
 import com.github.damontecres.wholphin.ui.discover.DownloadsPage
 import com.github.damontecres.wholphin.ui.discover.QueuePage
+import com.github.damontecres.wholphin.ui.discover.TriedPage
 import com.github.damontecres.wholphin.ui.main.HomePage
 import com.github.damontecres.wholphin.ui.main.settings.HomeSettingsPage
 import com.github.damontecres.wholphin.ui.playback.PlayExternalPage
@@ -423,6 +424,11 @@ fun DestinationContent(
         Destination.Queue -> {
             LaunchedEffect(Unit) { onClearBackdrop.invoke() }
             QueuePage(modifier = modifier)
+        }
+
+        Destination.Tried -> {
+            LaunchedEffect(Unit) { onClearBackdrop.invoke() }
+            TriedPage(modifier = modifier)
         }
 
         is Destination.DownloadDetail -> {

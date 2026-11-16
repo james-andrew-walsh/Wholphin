@@ -175,6 +175,44 @@ data class UnavailableResponse(
 )
 
 /**
+ * One removal from the queue, by a person or by auto-cancel, kept for good
+ *
+ * @param reason `not_found`, `no_seeds`, `stuck` or `removed`
+ * @param partial only some downloads or missing episodes of a series went, the series stayed
+ * @param removedBy who removed it, `Ourflix` for auto-cancel, blank if not known
+ * @param requestedBy the names of who had requested it, empty if nobody or not known
+ * @param at when it happened
+ */
+@Serializable
+data class QueueRemoval(
+    val id: Int,
+    @SerialName("media_type") val mediaType: String? = null,
+    @SerialName("tmdb_id") val tmdbId: Int? = null,
+    val title: String = "",
+    val year: Int? = null,
+    val reason: String? = null,
+    val partial: Boolean = false,
+    @SerialName("removed_by") val removedBy: String? = null,
+    @SerialName("requested_by") val requestedBy: List<String> = emptyList(),
+    val at: Long? = null,
+) {
+    /**
+     * The movie or series it was, null if the service didn't say
+     */
+    val itemType: SeerrItemType?
+        get() =
+            SeerrItemType.fromString(mediaType).takeIf { it == SeerrItemType.MOVIE || it == SeerrItemType.TV }
+}
+
+/**
+ * Every removal, newest first
+ */
+@Serializable
+data class QueueRemovals(
+    val removals: List<QueueRemoval> = emptyList(),
+)
+
+/**
  * A movie or series by its TMDB ID, the same ID can be both a movie and a different series
  */
 data class TitleKey(

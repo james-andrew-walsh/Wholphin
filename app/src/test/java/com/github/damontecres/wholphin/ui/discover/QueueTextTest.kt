@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.ui.discover
 
 import com.github.damontecres.wholphin.R
+import com.github.damontecres.wholphin.data.model.QueueRemoval
 import com.github.damontecres.wholphin.data.model.QueueRow
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
@@ -238,5 +239,18 @@ class QueueRemoveTest {
         assertNull(queueDestination(QueueRow(key = "movie:13", kind = "movie", tmdbId = null)))
         assertNull(queueDestination(QueueRow(key = "request:9", kind = "request", mediaType = "movie", tmdbId = 9)))
         assertNull(queueDestination(QueueRow(key = "torrent:ab", kind = "torrent")))
+    }
+
+    @Test
+    fun `tried titles open their Discover page when the service said what they were`() {
+        val movie = triedDestination(QueueRemoval(id = 1, mediaType = "movie", tmdbId = 120, title = "M"))
+        assertEquals(120, movie?.item?.id)
+        assertEquals(SeerrItemType.MOVIE, movie?.item?.type)
+        assertEquals("M", movie?.item?.title)
+        assertEquals(SeerrItemType.TV, triedDestination(QueueRemoval(id = 2, mediaType = "tv", tmdbId = 30))?.item?.type)
+
+        assertNull(triedDestination(QueueRemoval(id = 3, mediaType = "movie", tmdbId = null)))
+        assertNull(triedDestination(QueueRemoval(id = 4, mediaType = null, tmdbId = 5)))
+        assertNull(triedDestination(QueueRemoval(id = 5, mediaType = "person", tmdbId = 5)))
     }
 }

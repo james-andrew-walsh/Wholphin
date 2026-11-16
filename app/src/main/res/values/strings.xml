@@ -628,6 +628,13 @@
     <string name="queue_notice_partial">Missing episodes stopped · %1$s</string>
     <string name="queue_notice_ok">OK</string>
     <string name="queue_notice_ack_failed">Couldn\'t dismiss it, try again</string>
+    <string name="tried_title">Tried</string>
+    <plurals name="tried_count">
+        <item quantity="one">%1$d removed</item>
+        <item quantity="other">%1$d removed</item>
+    </plurals>
+    <string name="tried_empty">Nothing here yet</string>
+    <string name="tried_load_error">Couldn\'t load what was tried</string>
     <string name="request_4k">Request in 4K</string>
     <string name="software_decoding_av1">AV1 software decoding</string>
     <string name="upgrade_mpv_toast">MPV is now the default player except for HDR.\nYou can change this in settings.</string>

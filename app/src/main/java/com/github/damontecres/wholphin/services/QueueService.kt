@@ -3,6 +3,7 @@ package com.github.damontecres.wholphin.services
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.QueueAckResponse
 import com.github.damontecres.wholphin.data.model.QueueNotices
+import com.github.damontecres.wholphin.data.model.QueueRemovals
 import com.github.damontecres.wholphin.data.model.QueueRemoveResponse
 import com.github.damontecres.wholphin.data.model.QueueStatus
 import com.github.damontecres.wholphin.data.model.UnavailableResponse
@@ -152,6 +153,12 @@ class QueueService
 
         suspend fun unavailable(): QueueResult<UnavailableResponse> =
             call("v1/unavailable", null) { code, body -> parseQueueResponse(code, body) }
+
+        /**
+         * Everything removed from the queue so far, by anyone, newest first
+         */
+        suspend fun removalHistory(): QueueResult<QueueRemovals> =
+            call("v1/removals", null) { code, body -> parseQueueResponse(code, body) }
 
         /**
          * @param post the body to POST, or null to GET

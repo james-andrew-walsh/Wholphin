@@ -152,6 +152,13 @@ class NavDrawerViewModel
                     )
                 }
 
+                NavDrawerItem.Tried -> {
+                    setIndex(index)
+                    navigationManager.navigateToFromDrawer(
+                        Destination.Tried,
+                    )
+                }
+
                 is ServerNavDrawerItem -> {
                     setIndex(index)
                     navigationManager.navigateToFromDrawer(item.destination)
@@ -185,6 +192,7 @@ class NavDrawerViewModel
                             is NavDrawerItem.Discover -> Destination.Discover
                             is NavDrawerItem.Downloads -> Destination.Downloads
                             is NavDrawerItem.Queue -> Destination.Queue
+                            is NavDrawerItem.Tried -> Destination.Tried
                             else -> null
                         }
                     }
@@ -272,6 +280,13 @@ sealed interface NavDrawerItem {
             get() = "a_queue"
 
         override fun name(context: Context): String = context.getString(R.string.queue_title)
+    }
+
+    object Tried : NavDrawerItem {
+        override val id: String
+            get() = "a_tried"
+
+        override fun name(context: Context): String = context.getString(R.string.tried_title)
     }
 }
 
@@ -710,6 +725,10 @@ fun NavigationDrawerScope.NavItem(
 
                 NavDrawerItem.Queue -> {
                     R.string.fa_list_ul
+                }
+
+                NavDrawerItem.Tried -> {
+                    R.string.fa_circle_xmark
                 }
 
                 is ServerNavDrawerItem -> {

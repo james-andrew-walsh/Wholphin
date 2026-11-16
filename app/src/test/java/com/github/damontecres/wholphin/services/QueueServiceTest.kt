@@ -4,6 +4,7 @@ import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.AutoCancel
 import com.github.damontecres.wholphin.data.model.JellyfinUser
 import com.github.damontecres.wholphin.data.model.QueueNotices
+import com.github.damontecres.wholphin.data.model.QueueRemovals
 import com.github.damontecres.wholphin.data.model.QueueRemoveResponse
 import com.github.damontecres.wholphin.data.model.QueueStatus
 import com.github.damontecres.wholphin.data.model.SeerrItemType
@@ -116,7 +117,35 @@ private val UNAVAILABLE_RESPONSE =
     }
     """.trimIndent()
 
+private val REMOVALS_RESPONSE =
+    """
+    {
+      "removals": [
+        {"id": 3, "media_type": "tv", "tmdb_id": 77, "title": "Show", "year": 1990, "reason": "stuck",
+         "partial": true, "removed_by": "Ourflix", "requested_by": ["Sam"], "at": 1700000100, "extra": 1},
+        {"id": 2, "media_type": "movie", "tmdb_id": 501, "title": "Film", "year": null, "reason": "removed",
+         "partial": false, "removed_by": "Alex", "requested_by": [], "at": 1700000000},
+        {"id": 1, "title": "Old"}
+      ]
+    }
+    """.trimIndent()
+
 class QueueResponseTest {
+    @Test
+    fun `reads the removal history, with anything missing defaulted`() {
+        val result = parseQueueResponse<QueueRemovals>(200, REMOVALS_RESPONSE)
+
+        val removals = (result as QueueResult.Success).value.removals
+        assertEquals(listOf(3, 2, 1), removals.map { it.id })
+        assertEquals(SeerrItemType.TV, removals[0].itemType)
+        assertTrue(removals[0].partial)
+        assertEquals(listOf("Sam"), removals[0].requestedBy)
+        assertEquals("Alex", removals[1].removedBy)
+        assertNull(removals[1].year)
+        assertNull(removals[2].itemType)
+        assertEquals(emptyList<String>(), removals[2].requestedBy)
+    }
+
     @Test
     fun `reads every field of the queue in the server's order`() {
         val result = parseQueueResponse<QueueStatus>(200, QUEUE_RESPONSE)

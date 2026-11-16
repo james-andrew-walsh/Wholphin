@@ -60,6 +60,20 @@ internal fun noticeText(
         else -> NoticeText(R.string.queue_notice_cancelled, partial = partial)
     }
 
+/**
+ * What happened to something removed, in words: "Removed by Alex", "Stuck, cancelled"
+ */
+@Composable
+internal fun removalDescription(
+    reason: String?,
+    partial: Boolean,
+    removedBy: String?,
+): String {
+    val text = noticeText(reason, partial, removedBy)
+    val what = text.removedBy?.let { stringResource(text.reason, it) } ?: stringResource(text.reason)
+    return if (text.partial) stringResource(R.string.queue_notice_partial, what) else what
+}
+
 @Composable
 internal fun titleWithYear(
     title: String,
@@ -69,7 +83,7 @@ internal fun titleWithYear(
     return year?.let { stringResource(R.string.queue_title_year, name, it) } ?: name
 }
 
-private fun formatNoticeDate(epochSeconds: Long): String =
+internal fun formatNoticeDate(epochSeconds: Long): String =
     DateTimeFormatter
         .ofPattern("MMM d", Locale.getDefault())
         .withZone(ZoneId.systemDefault())
@@ -88,10 +102,7 @@ internal fun QueueNoticeLine(
     modifier: Modifier = Modifier,
     buttonModifier: Modifier = Modifier,
 ) {
-    val text = noticeText(notice.reason, notice.partial, notice.removedBy)
-    val reason =
-        text.removedBy?.let { stringResource(text.reason, it) } ?: stringResource(text.reason)
-    val what = if (text.partial) stringResource(R.string.queue_notice_partial, reason) else reason
+    val what = removalDescription(notice.reason, notice.partial, notice.removedBy)
     Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
