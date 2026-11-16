@@ -198,6 +198,7 @@ class NavDrawerService
                     add(NavDrawerItem.Favorites)
                     if (discoverActive) add(NavDrawerItem.Discover)
                     if (discoverActive && BuildConfig.DOWNLOADS_PAGE_ENABLED) add(NavDrawerItem.Downloads)
+                    if (discoverActive && BuildConfig.QUEUE_PAGE_ENABLED) add(NavDrawerItem.Queue)
                 }
             val allLibraries = getAllUserLibraries(user.id, userDto.tvAccess)
             val libraries =

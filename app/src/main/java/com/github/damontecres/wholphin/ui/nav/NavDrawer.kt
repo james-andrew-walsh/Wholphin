@@ -145,6 +145,13 @@ class NavDrawerViewModel
                     )
                 }
 
+                NavDrawerItem.Queue -> {
+                    setIndex(index)
+                    navigationManager.navigateToFromDrawer(
+                        Destination.Queue,
+                    )
+                }
+
                 is ServerNavDrawerItem -> {
                     setIndex(index)
                     navigationManager.navigateToFromDrawer(item.destination)
@@ -177,6 +184,7 @@ class NavDrawerViewModel
                             is NavDrawerItem.Favorites -> Destination.Favorites
                             is NavDrawerItem.Discover -> Destination.Discover
                             is NavDrawerItem.Downloads -> Destination.Downloads
+                            is NavDrawerItem.Queue -> Destination.Queue
                             else -> null
                         }
                     }
@@ -257,6 +265,13 @@ sealed interface NavDrawerItem {
             get() = "a_downloads"
 
         override fun name(context: Context): String = context.getString(R.string.downloads_title)
+    }
+
+    object Queue : NavDrawerItem {
+        override val id: String
+            get() = "a_queue"
+
+        override fun name(context: Context): String = context.getString(R.string.queue_title)
     }
 }
 
@@ -691,6 +706,10 @@ fun NavigationDrawerScope.NavItem(
 
                 NavDrawerItem.Downloads -> {
                     R.string.fa_download
+                }
+
+                NavDrawerItem.Queue -> {
+                    R.string.fa_list_ul
                 }
 
                 is ServerNavDrawerItem -> {

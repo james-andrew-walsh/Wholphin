@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.ui
 
 import android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
@@ -8,6 +9,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.github.damontecres.wholphin.R
+import com.github.damontecres.wholphin.data.model.TitleKey
 import com.github.damontecres.wholphin.services.ImageUrlService
 import org.jellyfin.sdk.model.api.ItemFields
 
@@ -17,6 +19,11 @@ val FontAwesome = FontFamily(Font(resId = R.font.fa_solid_900))
 
 val LocalImageUrlService =
     staticCompositionLocalOf<ImageUrlService> { throw IllegalStateException("LocalImageUrlService not set") }
+
+/**
+ * The titles the queue service gave up on, which the posters mark. Empty unless provided.
+ */
+val LocalUnavailableTitles = compositionLocalOf<Set<TitleKey>> { emptySet() }
 
 /**
  * Colors not associated with the theme

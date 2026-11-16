@@ -34,7 +34,7 @@ private val LAN_IPV6 = Regex("""(f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):.*""")
 // digit: resolvers read 134744072 or 0x8080808 as an address
 private val LAN_NAME_SUFFIXES = listOf(".local", ".lan", ".home.arpa", ".internal")
 
-private const val TOKEN_HEADER = "X-Emby-Token"
+internal const val TOKEN_HEADER = "X-Emby-Token"
 private const val HTTP_OK = 200
 private const val HTTP_UNAUTHORIZED = 401
 private const val HTTP_NOT_FOUND = 404
@@ -42,7 +42,7 @@ private const val HTTP_UNAVAILABLE = 503
 private const val ERROR_AUTH_UNAVAILABLE = "auth_unavailable"
 private const val ERROR_UNKNOWN_HASH = "unknown_hash"
 
-private val json =
+internal val serviceJson =
     Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
@@ -92,30 +92,54 @@ internal fun isLanHost(host: String): Boolean =
     }
 
 /**
- * The address of a download on the status service
+ * The root of a service which runs beside Seerr, on its host
  *
  * Every request carries the Jellyfin token in the clear, so there is no address unless Seerr itself
  * is on plain HTTP on the local network. Anything else would send the token over a connection that
  * the user didn't choose.
  *
  * @param seerrUrl the configured Seerr server, whose host the service is on
- * @return the URL or null if there is no usable Seerr server
+ * @return a builder for the URL or null if there is no usable Seerr server
  */
-internal fun downloadStatusUrl(
+internal fun lanServiceUrl(
     seerrUrl: String?,
-    hash: String,
-): HttpUrl? {
+    port: Int,
+): HttpUrl.Builder? {
     val seerr = seerrUrl?.toHttpUrlOrNull() ?: return null
     if (seerr.isHttps || !isLanHost(seerr.host)) return null
     return HttpUrl
         .Builder()
         .scheme("http")
         .host(seerr.host)
-        .port(STATUS_PORT)
-        .addPathSegments("v1/downloads")
-        .addPathSegment(hash)
-        .build()
+        .port(port)
 }
+
+/**
+ * The address of a download on the status service, see [lanServiceUrl]
+ *
+ * @return the URL or null if there is no usable Seerr server
+ */
+internal fun downloadStatusUrl(
+    seerrUrl: String?,
+    hash: String,
+): HttpUrl? =
+    lanServiceUrl(seerrUrl, STATUS_PORT)
+        ?.addPathSegments("v1/downloads")
+        ?.addPathSegment(hash)
+        ?.build()
+
+/**
+ * The client for a service beside Seerr, which only gets the token and only briefly waits for it
+ */
+internal fun lanServiceClient(okHttpClient: OkHttpClient): OkHttpClient =
+    okHttpClient
+        .newBuilder()
+        // A redirect would carry the token along, it is only meant for the service
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .connectTimeout(3.seconds)
+        .callTimeout(8.seconds)
+        .build()
 
 /**
  * Normalize the status service's response
@@ -130,7 +154,7 @@ internal fun parseDownloadStatusResponse(
     when (code) {
         HTTP_OK -> {
             try {
-                DownloadStatusResult.Success(json.decodeFromString<DownloadStatus>(body))
+                DownloadStatusResult.Success(serviceJson.decodeFromString<DownloadStatus>(body))
             } catch (_: SerializationException) {
                 DownloadStatusResult.Failure(DownloadStatusError.SERVICE_UNAVAILABLE)
             }
@@ -138,7 +162,7 @@ internal fun parseDownloadStatusResponse(
 
         HTTP_UNAUTHORIZED -> {
             DownloadStatusResult.Failure(
-                if (errorCode(body) == ERROR_AUTH_UNAVAILABLE) {
+                if (serviceErrorCode(body) == ERROR_AUTH_UNAVAILABLE) {
                     DownloadStatusError.AUTH_UNAVAILABLE
                 } else {
                     DownloadStatusError.SESSION_REFUSED
@@ -147,7 +171,7 @@ internal fun parseDownloadStatusResponse(
         }
 
         HTTP_NOT_FOUND -> {
-            if (errorCode(body) == ERROR_UNKNOWN_HASH) {
+            if (serviceErrorCode(body) == ERROR_UNKNOWN_HASH) {
                 DownloadStatusResult.Gone
             } else {
                 DownloadStatusResult.Failure(DownloadStatusError.SERVICE_UNAVAILABLE)
@@ -163,9 +187,12 @@ internal fun parseDownloadStatusResponse(
         }
     }
 
-private fun errorCode(body: String): String? =
+/**
+ * The `error` of a service's error response, null if it has none
+ */
+internal fun serviceErrorCode(body: String): String? =
     try {
-        json.decodeFromString<StatusError>(body).error
+        serviceJson.decodeFromString<StatusError>(body).error
     } catch (_: SerializationException) {
         null
     }
@@ -183,15 +210,7 @@ class DownloadStatusService
         private val seerrServerRepository: SeerrServerRepository,
         private val serverRepository: ServerRepository,
     ) {
-        // A redirect would carry the token along, it is only meant for the service
-        private val client =
-            okHttpClient
-                .newBuilder()
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .connectTimeout(3.seconds)
-                .callTimeout(8.seconds)
-                .build()
+        private val client = lanServiceClient(okHttpClient)
 
         suspend fun fetch(hash: String): DownloadStatusResult {
             val token =

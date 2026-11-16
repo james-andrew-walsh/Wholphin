@@ -17,6 +17,8 @@ import com.github.damontecres.wholphin.api.seerr.model.UserUserIdRequestsGet200R
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadState
 import com.github.damontecres.wholphin.data.model.DownloadStatus
+import com.github.damontecres.wholphin.data.model.QueueNotice
+import com.github.damontecres.wholphin.data.model.QueueNotices
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
@@ -25,6 +27,8 @@ import com.github.damontecres.wholphin.services.DownloadStatusError
 import com.github.damontecres.wholphin.services.DownloadStatusResult
 import com.github.damontecres.wholphin.services.DownloadStatusService
 import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.QueueResult
+import com.github.damontecres.wholphin.services.QueueService
 import com.github.damontecres.wholphin.services.RemoveRequestResult
 import com.github.damontecres.wholphin.services.RemovedMedia
 import com.github.damontecres.wholphin.services.SeerrServerRepository
@@ -90,6 +94,8 @@ class DownloadsViewModelTest {
     private val api = mockk<ApiClient>()
     private val navigationManager = mockk<NavigationManager>(relaxed = true)
     private val statusService = mockk<DownloadStatusService>()
+    private val queueService = mockk<QueueService>()
+    private val queueRemovals = MutableStateFlow(0)
 
     private val userId = MutableStateFlow<Int?>(USER_ID)
     private val currentSeerr = MutableStateFlow<CurrentSeerr?>(null)
@@ -111,6 +117,7 @@ class DownloadsViewModelTest {
         every { seerrServerRepository.current } returns currentSeerr
         every { seerrService.removedMedia } returns removedMedia
         every { api.userLibraryApi } returns userLibraryApi
+        every { queueService.removals } returns queueRemovals
 
         coEvery { seerrService.createDiscoverItem(any<MovieDetails>()) } coAnswers {
             val movie = firstArg<MovieDetails>()
@@ -170,6 +177,7 @@ class DownloadsViewModelTest {
             seerrService = seerrService,
             seerrServerRepository = seerrServerRepository,
             statusService = statusService,
+            queueService = queueService,
             navigationManager = navigationManager,
         )
 
@@ -1421,4 +1429,98 @@ class DownloadsViewModelTest {
         assertEquals(null, rowAfterRemoval(rows, rows, 99))
         assertEquals(null, rowAfterRemoval(rows, rows, null))
     }
+
+    @Test
+    fun `a removal on the queue page loads the rows again when the page comes back`() =
+        runTest(testDispatcher) {
+            media(1)
+            val viewModel = openedPage(request(1))
+            movieFetches.clear()
+
+            queueRemovals.value = 1
+            viewModel.onResume()
+            advanceUntilIdle()
+
+            // Coming back without one only fetches new requests, a reload fetches every row
+            assertEquals(listOf(1), movieFetches)
+            assertEquals(listOf(1), viewModel.rows().map { it.requestId })
+        }
+
+    private fun notice(id: Int) = QueueNotice(id = id, title = "Movie $id", reason = "not_found")
+
+    private fun TestScope.startNotices(viewModel: DownloadsViewModel) =
+        launch(testDispatcher) { viewModel.refreshNoticesWhileVisible() }
+
+    @Test
+    fun `notices load beside the rows`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.QUEUE_PAGE_ENABLED)
+            coEvery { queueService.notices() } returns QueueResult.Success(QueueNotices(listOf(notice(1), notice(2))))
+            media(1)
+            val viewModel = openedPage(request(1))
+            val job = startNotices(viewModel)
+            advanceTimeBy(1)
+
+            assertEquals(listOf(1, 2), viewModel.notices.value.notices.map { it.id })
+            assertEquals(listOf(1), viewModel.rows().map { it.requestId })
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `without the queue service there are no notices and no error`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.QUEUE_PAGE_ENABLED)
+            coEvery { queueService.notices() } returns QueueResult.Failure()
+            media(1)
+            val viewModel = openedPage(request(1))
+            val job = startNotices(viewModel)
+            advanceTimeBy(1)
+
+            assertEquals(emptyList<QueueNotice>(), viewModel.notices.value.notices)
+            assertTrue(viewModel.state.value.rows is DataLoadingState.Success)
+            assertFalse(viewModel.state.value.refreshFailed)
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `an acknowledged notice goes and a refresh doesn't bring it back`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.QUEUE_PAGE_ENABLED)
+            coEvery { queueService.notices() } returns QueueResult.Success(QueueNotices(listOf(notice(1), notice(2))))
+            coEvery { queueService.acknowledge(1) } returns QueueResult.Success(true)
+            val viewModel = openedPage()
+            val job = startNotices(viewModel)
+            advanceTimeBy(1)
+
+            viewModel.acknowledge(notice(1))
+            advanceTimeBy(1)
+            assertEquals(listOf(2), viewModel.notices.value.notices.map { it.id })
+
+            // The service can still list it in a response that was on its way
+            advanceTimeBy(60_000)
+            assertEquals(listOf(2), viewModel.notices.value.notices.map { it.id })
+            coVerify(exactly = 1) { queueService.acknowledge(1) }
+            job.cancelAndJoin()
+        }
+
+    @Test
+    fun `a notice stays when acknowledging it fails`() =
+        runTest(testDispatcher) {
+            assumeTrue(BuildConfig.QUEUE_PAGE_ENABLED)
+            coEvery { queueService.notices() } returns QueueResult.Success(QueueNotices(listOf(notice(1))))
+            coEvery { queueService.acknowledge(1) } returns QueueResult.Failure()
+            val viewModel = openedPage()
+            val job = startNotices(viewModel)
+            advanceTimeBy(1)
+
+            viewModel.acknowledge(notice(1))
+            advanceTimeBy(1)
+
+            assertEquals(listOf(1), viewModel.notices.value.notices.map { it.id })
+            assertTrue(viewModel.notices.value.ackFailed)
+            assertEquals(emptySet<Int>(), viewModel.notices.value.acknowledging)
+            viewModel.onAckFailureShown()
+            assertFalse(viewModel.notices.value.ackFailed)
+            job.cancelAndJoin()
+        }
 }

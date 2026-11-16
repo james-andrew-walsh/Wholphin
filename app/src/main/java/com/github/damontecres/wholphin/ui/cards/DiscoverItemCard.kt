@@ -39,10 +39,12 @@ import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
+import com.github.damontecres.wholphin.data.model.showsUnavailable
 import com.github.damontecres.wholphin.ui.AppColors
 import com.github.damontecres.wholphin.ui.AspectRatios
 import com.github.damontecres.wholphin.ui.Cards
 import com.github.damontecres.wholphin.ui.FontAwesome
+import com.github.damontecres.wholphin.ui.LocalUnavailableTitles
 import com.github.damontecres.wholphin.ui.PreviewTvSpec
 import com.github.damontecres.wholphin.ui.enableMarquee
 import com.github.damontecres.wholphin.ui.theme.WholphinTheme
@@ -60,6 +62,7 @@ fun DiscoverItemCard(
 ) {
     val focused by interactionSource.collectIsFocusedAsState()
     var focusedAfterDelay by remember { mutableStateOf(false) }
+    val unavailable = showsUnavailable(item?.availability, item?.type, item?.id, LocalUnavailableTitles.current)
 
     val hideOverlayDelay = 500L
     if (focused) {
@@ -137,6 +140,8 @@ fun DiscoverItemCard(
                     SeerrAvailability.DELETED,
                     null,
                     -> {
+                        // Not requested now, but the queue service gave up on it before
+                        if (unavailable) BlocklistedIndicator(Modifier.align(Alignment.TopEnd))
                     }
                 }
                 if (showOverlay) {

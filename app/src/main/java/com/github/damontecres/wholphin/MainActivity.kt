@@ -23,8 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.datastore.core.DataStore
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.navigation3.runtime.NavBackStack
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -49,6 +51,7 @@ import com.github.damontecres.wholphin.services.ServerEventListener
 import com.github.damontecres.wholphin.services.SetupDestination
 import com.github.damontecres.wholphin.services.SetupNavigationManager
 import com.github.damontecres.wholphin.services.SuggestionsSchedulerService
+import com.github.damontecres.wholphin.services.UnavailableTitles
 import com.github.damontecres.wholphin.services.UpdateChecker
 import com.github.damontecres.wholphin.services.UserPreferencesService
 import com.github.damontecres.wholphin.services.UserSwitchListener
@@ -56,6 +59,7 @@ import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
 import com.github.damontecres.wholphin.services.tvprovider.TvProviderSchedulerService
 import com.github.damontecres.wholphin.ui.CoilConfig
 import com.github.damontecres.wholphin.ui.LocalImageUrlService
+import com.github.damontecres.wholphin.ui.LocalUnavailableTitles
 import com.github.damontecres.wholphin.ui.collectLatestIn
 import com.github.damontecres.wholphin.ui.components.LoadingPage
 import com.github.damontecres.wholphin.ui.launchDefault
@@ -151,6 +155,9 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var intentService: IntentService
 
+    @Inject
+    lateinit var unavailableTitles: UnavailableTitles
+
     private var signInAuto = true
     private var playerBackend: PlayerBackend? = null
 
@@ -228,6 +235,13 @@ class MainActivity : AppCompatActivity() {
             playerBackend = prefs.playbackPreferences.playerBackend
         }
 
+        // The posters' marks for titles the queue service gave up on, only while the app is showing
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                unavailableTitles.keepFresh()
+            }
+        }
+
         viewModel.appStart(intent)
         setContent {
             MaterialTheme(colorScheme = PurpleThemeColors.darkScheme) {
@@ -263,7 +277,11 @@ class MainActivity : AppCompatActivity() {
                             LaunchedEffect(appPreferences.debugLogging) {
                                 DebugLogTree.INSTANCE.enabled = appPreferences.debugLogging
                             }
-                            CompositionLocalProvider(LocalImageUrlService provides imageUrlService) {
+                            val unavailable by unavailableTitles.titles.collectAsState()
+                            CompositionLocalProvider(
+                                LocalImageUrlService provides imageUrlService,
+                                LocalUnavailableTitles provides unavailable,
+                            ) {
                                 WholphinTheme(
                                     true,
                                     appThemeColors = appPreferences.interfacePreferences.appThemeColors,

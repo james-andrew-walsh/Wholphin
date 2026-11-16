@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +67,7 @@ import com.github.damontecres.wholphin.data.model.DiscoverItem
 import com.github.damontecres.wholphin.data.model.DownloadProgress
 import com.github.damontecres.wholphin.data.model.DownloadState
 import com.github.damontecres.wholphin.data.model.DownloadStatus
+import com.github.damontecres.wholphin.data.model.QueueNotice
 import com.github.damontecres.wholphin.data.model.RequestStatus
 import com.github.damontecres.wholphin.data.model.SeerrAvailability
 import com.github.damontecres.wholphin.data.model.SeerrItemType
@@ -77,8 +79,10 @@ import com.github.damontecres.wholphin.data.model.downloadRefreshDelay
 import com.github.damontecres.wholphin.data.model.hasMoreDownloads
 import com.github.damontecres.wholphin.data.model.isDownloadHash
 import com.github.damontecres.wholphin.data.model.isMovieReleased
+import com.github.damontecres.wholphin.data.model.keyAfterRemoval
 import com.github.damontecres.wholphin.data.model.keepsRefreshing
 import com.github.damontecres.wholphin.data.model.nextRefreshBatch
+import com.github.damontecres.wholphin.data.model.nextRemaining
 import com.github.damontecres.wholphin.data.model.parseSeerrTime
 import com.github.damontecres.wholphin.data.model.requestedQueue
 import com.github.damontecres.wholphin.data.model.requestedSeasonsInLibrary
@@ -86,6 +90,8 @@ import com.github.damontecres.wholphin.data.model.seenInQueue
 import com.github.damontecres.wholphin.services.DownloadStatusResult
 import com.github.damontecres.wholphin.services.DownloadStatusService
 import com.github.damontecres.wholphin.services.NavigationManager
+import com.github.damontecres.wholphin.services.QueueResult
+import com.github.damontecres.wholphin.services.QueueService
 import com.github.damontecres.wholphin.services.RemoveRequestResult
 import com.github.damontecres.wholphin.services.RemovedMedia
 import com.github.damontecres.wholphin.services.SeerrServerRepository
@@ -244,13 +250,7 @@ internal fun rowAfterRemoval(
     previous: List<DownloadRow>,
     rows: List<DownloadRow>,
     focusedRequestId: Int?,
-): Int? {
-    val index = previous.indexOfFirst { it.requestId == focusedRequestId }
-    if (index < 0 || rows.any { it.requestId == focusedRequestId }) return null
-    val remaining = rows.map { it.requestId }.toSet()
-    val after = previous.drop(index + 1).firstOrNull { it.requestId in remaining }
-    return (after ?: previous.take(index).lastOrNull { it.requestId in remaining })?.requestId
-}
+): Int? = keyAfterRemoval(previous.map { it.requestId }, rows.map { it.requestId }, focusedRequestId)
 
 /**
  * Drop the rows of what was removed, every request for it goes along with Seerr's record
@@ -293,6 +293,20 @@ internal fun detailDestination(
     )
 }
 
+/**
+ * The user's notices from the queue service, kept apart from the rows so that they never get in
+ * the way of loading them
+ *
+ * @param acknowledged the notices acknowledged here, which a refresh started before can still have
+ * @param ackFailed the last acknowledgement didn't work, until that has been shown
+ */
+data class NoticesState(
+    val notices: List<QueueNotice> = emptyList(),
+    val acknowledging: Set<Int> = emptySet(),
+    val acknowledged: Set<Int> = emptySet(),
+    val ackFailed: Boolean = false,
+)
+
 private data class DownloadsResult(
     val rows: List<DownloadRow>,
     val fetched: Int,
@@ -316,10 +330,17 @@ class DownloadsViewModel
         private val seerrService: SeerrService,
         private val seerrServerRepository: SeerrServerRepository,
         private val statusService: DownloadStatusService,
+        private val queueService: QueueService,
         val navigationManager: NavigationManager,
     ) : ViewModel() {
         private val _state = MutableStateFlow(DownloadsState())
         val state: StateFlow<DownloadsState> = _state
+
+        private val _notices = MutableStateFlow(NoticesState())
+        val notices: StateFlow<NoticesState> = _notices
+
+        // A removal on the Queue page can change any row, so the rows load again after one
+        private var queueRemovals = queueService.removals.value
 
         private val limiter = Semaphore(MAX_CONCURRENT_REQUESTS)
         private val reloads = MutableStateFlow(0)
@@ -438,6 +459,14 @@ class DownloadsViewModel
         fun onResume() {
             val firstResume = !resumed
             resumed = true
+            val removals = queueService.removals.value
+            if (removals != queueRemovals) {
+                queueRemovals = removals
+                if (!firstResume) {
+                    retry()
+                    return
+                }
+            }
             val userId = userId
             if (firstResume || userId == null || newRequestsJob?.isActive == true) return
             if (_state.value.rows !is DataLoadingState.Success) return
@@ -750,6 +779,55 @@ class DownloadsViewModel
         fun onRemoveFailureShown() {
             _state.update { it.copy(removeFailure = null) }
         }
+
+        /**
+         * Keep the notices up to date for as long as the caller stays active
+         *
+         * The service is optional, without it there are just no notices.
+         */
+        suspend fun refreshNoticesWhileVisible() {
+            if (!BuildConfig.QUEUE_PAGE_ENABLED) return
+            var failures = 0
+            while (true) {
+                val result = queueService.notices()
+                if (result is QueueResult.Success) {
+                    failures = 0
+                    _notices.update { current ->
+                        current.copy(notices = result.value.notices.filterNot { it.id in current.acknowledged })
+                    }
+                } else {
+                    failures++
+                }
+                delay(downloadRefreshDelay(failures))
+            }
+        }
+
+        fun acknowledge(notice: QueueNotice) {
+            var start = false
+            _notices.update {
+                start = notice.id !in it.acknowledging
+                it.copy(acknowledging = it.acknowledging + notice.id)
+            }
+            if (!start) return
+            viewModelScope.launchIO {
+                val gone = (queueService.acknowledge(notice.id) as? QueueResult.Success)?.value == true
+                _notices.update { current ->
+                    if (gone) {
+                        current.copy(
+                            notices = current.notices.filterNot { it.id == notice.id },
+                            acknowledging = current.acknowledging - notice.id,
+                            acknowledged = current.acknowledged + notice.id,
+                        )
+                    } else {
+                        current.copy(acknowledging = current.acknowledging - notice.id, ackFailed = true)
+                    }
+                }
+            }
+        }
+
+        fun onAckFailureShown() {
+            _notices.update { it.copy(ackFailed = false) }
+        }
     }
 
 /**
@@ -761,6 +839,7 @@ fun DownloadsPage(
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val notices by viewModel.notices.collectAsState()
     val context = LocalContext.current
     var rowToRemove by remember { mutableStateOf<DownloadRow?>(null) }
 
@@ -775,6 +854,12 @@ fun DownloadsPage(
             viewModel.onRemoveFailureShown()
         }
     }
+    LaunchedEffect(notices.ackFailed) {
+        if (notices.ackFailed) {
+            showToast(context, context.getString(R.string.queue_notice_ack_failed))
+            viewModel.onAckFailureShown()
+        }
+    }
 
     // Leaving the page or the app cancels this, so nothing is fetched unless it can be seen
     val refreshing = state.refreshing
@@ -784,6 +869,11 @@ fun DownloadsPage(
             lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 viewModel.refreshWhileVisible()
             }
+        }
+    }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refreshNoticesWhileVisible()
         }
     }
 
@@ -804,7 +894,7 @@ fun DownloadsPage(
         }
 
         is DataLoadingState.Success<List<DownloadRow>> -> {
-            if (rows.data.isEmpty()) {
+            if (rows.data.isEmpty() && notices.notices.isEmpty()) {
                 DownloadsMessage(
                     message = stringResource(R.string.downloads_empty),
                     detail = null,
@@ -815,8 +905,11 @@ fun DownloadsPage(
                 DownloadsList(
                     rows = rows.data,
                     state = state,
+                    notices = notices.notices,
+                    acknowledging = notices.acknowledging,
                     onClickRow = viewModel::open,
                     onClickRemove = { rowToRemove = it },
+                    onAcknowledge = viewModel::acknowledge,
                     onLoadMore = viewModel::loadMore,
                     onRetryLoadMore = viewModel::retryLoadMore,
                     modifier = modifier,
@@ -837,7 +930,7 @@ fun DownloadsPage(
 }
 
 @Composable
-private fun DownloadsMessage(
+internal fun DownloadsMessage(
     message: String,
     detail: String?,
     onRetry: () -> Unit,
@@ -879,15 +972,19 @@ private fun DownloadsMessage(
 private fun DownloadsList(
     rows: List<DownloadRow>,
     state: DownloadsState,
+    notices: List<QueueNotice>,
+    acknowledging: Set<Int>,
     onClickRow: (DownloadRow) -> Unit,
     onClickRemove: (DownloadRow) -> Unit,
+    onAcknowledge: (QueueNotice) -> Unit,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focusedRequestId by rememberSaveable { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
-    val restoredRow = remember { listState.firstVisibleItemIndex }
+    // The notices come before the rows
+    val restoredRow = remember { (listState.firstVisibleItemIndex - notices.size).coerceAtLeast(0) }
     val focusedRow = focusedRowIndex(rows, focusedRequestId, restoredRow)
     val focusRequester = remember { FocusRequester() }
     // Not saved, so that coming back to the page focuses the row it was left on
@@ -895,14 +992,45 @@ private fun DownloadsList(
     // The last row while the retry button has focus, otherwise null
     var rowBeforeRetry by remember { mutableStateOf<Int?>(null) }
     var previousRows by remember { mutableStateOf(rows) }
+    // The notice whose button has focus, null once a row has it
+    var focusedNoticeId by remember { mutableStateOf<Int?>(null) }
+    var noticeToFocus by remember { mutableStateOf<Int?>(null) }
+    val noticeFocusRequester = remember { FocusRequester() }
+    var previousNotices by remember { mutableStateOf(notices.map { it.id }) }
 
     // The row with focus can go while the page is showing, a remote would have nothing focused
     LaunchedEffect(rows) {
         rowAfterRemoval(previousRows, rows, focusedRequestId)?.let {
-            focusedRequestId = it
-            focusRestored = false
+            if (focusedNoticeId == null) {
+                focusedRequestId = it
+                focusRestored = false
+            }
         }
         previousRows = rows
+    }
+    // An acknowledged notice goes, focus moves on to the next one or else to the first row
+    LaunchedEffect(notices) {
+        val ids = notices.map { it.id }
+        val focused = focusedNoticeId
+        if (focused != null && focused in previousNotices && focused !in ids) {
+            val next = nextRemaining(previousNotices, ids, focused)
+            if (next == null && rows.isNotEmpty()) {
+                focusedNoticeId = null
+                focusedRequestId = rows.first().requestId
+                focusRestored = false
+            } else {
+                noticeToFocus = next ?: ids.lastOrNull()
+            }
+        }
+        // Notices which arrive while the list is at the top would otherwise be above it, out of sight
+        if (ids.any { it !in previousNotices } && listState.firstVisibleItemIndex <= notices.size) {
+            listState.scrollToItem(0)
+        }
+        previousNotices = ids
+    }
+    // Without rows the notices are all there is to focus
+    LaunchedEffect(Unit) {
+        if (rows.isEmpty()) noticeToFocus = notices.firstOrNull()?.id
     }
     LaunchedEffect(focusedRow, rows.size) {
         if (focusedRow >= rows.size - ROWS_LOADED_AHEAD) onLoadMore.invoke()
@@ -941,6 +1069,35 @@ private fun DownloadsList(
                     .weight(1f)
                     .fillMaxWidth(),
         ) {
+            items(notices, key = { "notice-${it.id}" }) { notice ->
+                val requestFocus = notice.id == noticeToFocus
+                if (requestFocus) {
+                    LaunchedEffect(Unit) {
+                        if (noticeFocusRequester.tryRequestFocus("notice")) noticeToFocus = null
+                    }
+                }
+                QueueNoticeLine(
+                    notice = notice,
+                    acknowledging = notice.id in acknowledging,
+                    onAcknowledge = { onAcknowledge.invoke(notice) },
+                    buttonModifier = Modifier.ifElse(requestFocus, Modifier.focusRequester(noticeFocusRequester)),
+                    modifier = Modifier.onFocusChanged { if (it.hasFocus) focusedNoticeId = notice.id },
+                )
+            }
+            if (rows.isEmpty()) {
+                item(key = "empty") {
+                    Text(
+                        text = stringResource(R.string.downloads_empty),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                    )
+                }
+            }
             itemsIndexed(rows, key = { _, row -> row.requestId }) { index, row ->
                 val restoreFocus = index == focusedRow && !focusRestored
                 if (restoreFocus) {
@@ -952,7 +1109,13 @@ private fun DownloadsList(
                     onClick = { onClickRow.invoke(row) },
                     onClickRemove = { onClickRemove.invoke(row) },
                     cardModifier = Modifier.ifElse(restoreFocus, Modifier.focusRequester(focusRequester)),
-                    modifier = Modifier.onFocusChanged { if (it.hasFocus) focusedRequestId = row.requestId },
+                    modifier =
+                        Modifier.onFocusChanged {
+                            if (it.hasFocus) {
+                                focusedRequestId = row.requestId
+                                focusedNoticeId = null
+                            }
+                        },
                 )
             }
             val showRetry = state.loadMoreFailed || rowBeforeRetry != null

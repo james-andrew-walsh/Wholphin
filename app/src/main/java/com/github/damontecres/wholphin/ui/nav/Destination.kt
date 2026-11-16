@@ -178,6 +178,9 @@ sealed class Destination(
     @Serializable
     data object Downloads : Destination(false)
 
+    @Serializable
+    data object Queue : Destination(false)
+
     /**
      * @param downloadId the download client's ID from Seerr's queue
      * @param progress what Seerr said when the page was opened, shown until there is something better

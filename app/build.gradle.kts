@@ -173,6 +173,7 @@ configure<ApplicationExtension> {
         val featureMoviesOnlyDiscover = "MOVIES_ONLY_DISCOVER_ENABLED"
         val featureBrowseDiscover = "BROWSE_DISCOVER_ENABLED"
         val featureDownloadsPage = "DOWNLOADS_PAGE_ENABLED"
+        val featureQueuePage = "QUEUE_PAGE_ENABLED"
         val featureRemoveRequest = "REMOVE_REQUEST_ENABLED"
         val upstreamScheme = "wholphin"
         val upstreamPlaybackAction = "com.github.damontecres.wholphin.PLAYBACK"
@@ -215,6 +216,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMoviesOnlyDiscover, false)
             setFeatureFlag(featureBrowseDiscover, false)
             setFeatureFlag(featureDownloadsPage, false)
+            setFeatureFlag(featureQueuePage, false)
             setFeatureFlag(featureRemoveRequest, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
@@ -236,6 +238,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMoviesOnlyDiscover, false)
             setFeatureFlag(featureBrowseDiscover, false)
             setFeatureFlag(featureDownloadsPage, false)
+            setFeatureFlag(featureQueuePage, false)
             setFeatureFlag(featureRemoveRequest, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
@@ -257,6 +260,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMoviesOnlyDiscover, false)
             setFeatureFlag(featureBrowseDiscover, false)
             setFeatureFlag(featureDownloadsPage, false)
+            setFeatureFlag(featureQueuePage, false)
             setFeatureFlag(featureRemoveRequest, false)
             setDeepLink(upstreamScheme, upstreamPlaybackAction)
             setUpgradeBaseline("")
@@ -281,6 +285,7 @@ configure<ApplicationExtension> {
             setFeatureFlag(featureMoviesOnlyDiscover, false)
             setFeatureFlag(featureBrowseDiscover, true)
             setFeatureFlag(featureDownloadsPage, true)
+            setFeatureFlag(featureQueuePage, true)
             setFeatureFlag(featureRemoveRequest, true)
             setDeepLink("ourflix", "app.ourflix.PLAYBACK")
             // The upstream release this is merged with, raise it with each upstream merge
