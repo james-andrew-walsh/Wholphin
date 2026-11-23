@@ -132,6 +132,7 @@ fun DiscoverSeriesDetails(
                 onClickPerson = {
                     viewModel.navigateTo(Destination.DiscoveredItem(it))
                 },
+                onClickExplore = { viewModel.navigateTo(it.destination()) },
                 goToOnClick = {
                     viewModel.goTo(item.mediaInfo, BaseItemKind.SERIES)
                 },
@@ -226,6 +227,7 @@ private const val EXTRAS_ROW = PEOPLE_ROW + 1
 private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val RECOMMENDED_ROW = SIMILAR_ROW + 1
 private const val TRAILER_ROW = RECOMMENDED_ROW + 1
+private const val EXPLORE_ROW = TRAILER_ROW + 1
 
 /**
  * Seerr takes a new request for a deleted series, so it gets the button of one never requested
@@ -256,6 +258,7 @@ fun DiscoverSeriesDetailsContent(
     onLongClickPerson: (Int, DiscoverItem) -> Unit,
     onLongClickSimilar: (Int, DiscoverItem) -> Unit,
     modifier: Modifier = Modifier,
+    onClickExplore: (ExploreLink) -> Unit = {},
     canRemove: Boolean = false,
     removing: Boolean = false,
     removeOnClick: () -> Unit = {},
@@ -265,7 +268,7 @@ fun DiscoverSeriesDetailsContent(
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
     var position by rememberInt()
-    val focusRequesters = remember { List(TRAILER_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(EXPLORE_ROW + 1) { FocusRequester() } }
     val playFocusRequester = remember { FocusRequester() }
     RequestOrRestoreFocus(focusRequesters.getOrNull(position), focusRequesters[HEADER_ROW])
     var moreDialog by remember { mutableStateOf<DialogParams?>(null) }
@@ -376,6 +379,19 @@ fun DiscoverSeriesDetailsContent(
                                 onLongClickPerson.invoke(index, person)
                             },
                             modifier = Modifier.focusRequester(focusRequesters[PEOPLE_ROW]),
+                        )
+                    }
+                }
+                val exploreLinks = exploreLinks(series)
+                if (exploreLinks.isNotEmpty()) {
+                    item {
+                        ExploreRow(
+                            links = exploreLinks,
+                            onClick = {
+                                position = EXPLORE_ROW
+                                onClickExplore.invoke(it)
+                            },
+                            modifier = Modifier.focusRequester(focusRequesters[EXPLORE_ROW]),
                         )
                     }
                 }

@@ -298,17 +298,40 @@ class SeerrService
          * The two lists returned by the API are merged, de-duplicated by id since a person can be
          * both cast and crew on the same title, and sorted by release date descending with undated
          * entries last
+         *
+         * @param directedOnly only the films they directed
          */
-        suspend fun personCredits(personId: Int): List<DiscoverItem> =
+        suspend fun personCredits(
+            personId: Int,
+            directedOnly: Boolean = false,
+        ): List<DiscoverItem> =
             api.personApi
                 .personPersonIdCombinedCreditsGet(personId = personId)
                 .let { credits ->
-                    val cast = credits.cast?.map { createDiscoverItem(it) }.orEmpty()
-                    val crew = credits.crew?.map { createDiscoverItem(it) }.orEmpty()
-                    (cast + crew)
-                        .distinctBy { it.id }
+                    if (directedOnly) {
+                        credits.crew
+                            ?.filter { it.job == "Director" && it.mediaType == "movie" }
+                            ?.map { createDiscoverItem(it) }
+                            .orEmpty()
+                    } else {
+                        val cast = credits.cast?.map { createDiscoverItem(it) }.orEmpty()
+                        val crew = credits.crew?.map { createDiscoverItem(it) }.orEmpty()
+                        cast + crew
+                    }.distinctBy { it.id }
                         .sortedByDescending { it.releaseDate }
                 }
+
+        /**
+         * The films in a franchise in release order, with unreleased ones last
+         */
+        suspend fun collectionParts(collectionId: Int): List<DiscoverItem> =
+            api.collectionApi
+                .collectionCollectionIdGet(collectionId = collectionId)
+                .parts
+                .orEmpty()
+                .map { createDiscoverItem(it) }
+                .distinctBy { it.id }
+                .sortedWith(compareBy(nullsLast()) { it.releaseDate })
 
         /**
          * Create a [DiscoverItem] for a person in the library so that the full grid of their

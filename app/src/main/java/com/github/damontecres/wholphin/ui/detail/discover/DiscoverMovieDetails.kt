@@ -134,6 +134,10 @@ fun DiscoverMovieDetails(
                 onClickPerson = { item ->
                     viewModel.navigateTo(Destination.DiscoveredItem(item))
                 },
+                onClickDirector = { item ->
+                    viewModel.navigateTo(Destination.DiscoveredItem(item, directedOnly = true))
+                },
+                onClickExplore = { viewModel.navigateTo(it.destination()) },
                 overviewOnClick = {
                     overviewDialog =
                         ItemDetailsDialogInfo(
@@ -202,6 +206,8 @@ private const val RECOMMENDED_ROW = SIMILAR_ROW + 1
 private const val TRAILER_ROW = RECOMMENDED_ROW + 1
 private const val RATING_IMDB_ROW = TRAILER_ROW + 1
 private const val RATING_RT_ROW = RATING_IMDB_ROW + 1
+private const val DIRECTOR_ROW = RATING_RT_ROW + 1
+private const val EXPLORE_ROW = DIRECTOR_ROW + 1
 
 @Composable
 fun DiscoverMovieDetailsContent(
@@ -223,6 +229,8 @@ fun DiscoverMovieDetailsContent(
     moreOnClick: () -> Unit,
     onClickItem: (Int, DiscoverItem) -> Unit,
     onClickPerson: (DiscoverItem) -> Unit,
+    onClickDirector: (DiscoverItem) -> Unit,
+    onClickExplore: (ExploreLink) -> Unit,
     onLongClickPerson: (Int, DiscoverItem) -> Unit,
     onLongClickSimilar: (Int, DiscoverItem) -> Unit,
     onClickRating: (String) -> Unit,
@@ -233,7 +241,7 @@ fun DiscoverMovieDetailsContent(
 ) {
     val scope = rememberCoroutineScope()
     var position by rememberInt(0)
-    val focusRequesters = remember { List(RATING_RT_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(EXPLORE_ROW + 1) { FocusRequester() } }
 
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     RequestOrRestoreFocus(focusRequesters.getOrNull(position), focusRequesters[HEADER_ROW])
@@ -258,6 +266,11 @@ fun DiscoverMovieDetailsContent(
                         ratings = ratings,
                         bringIntoViewRequester = bringIntoViewRequester,
                         overviewOnClick = overviewOnClick,
+                        onClickDirector = {
+                            position = DIRECTOR_ROW
+                            onClickDirector.invoke(it)
+                        },
+                        directorFocusRequester = focusRequesters[DIRECTOR_ROW],
                         showLogo = preferences.appPreferences.interfacePreferences.showLogos,
                         modifier =
                             Modifier
@@ -334,6 +347,19 @@ fun DiscoverMovieDetailsContent(
                             onLongClickPerson.invoke(index, person)
                         },
                         modifier = Modifier.focusRequester(focusRequesters[PEOPLE_ROW]),
+                    )
+                }
+            }
+            val exploreLinks = exploreLinks(movie)
+            if (exploreLinks.isNotEmpty()) {
+                item {
+                    ExploreRow(
+                        links = exploreLinks,
+                        onClick = {
+                            position = EXPLORE_ROW
+                            onClickExplore.invoke(it)
+                        },
+                        modifier = Modifier.focusRequester(focusRequesters[EXPLORE_ROW]),
                     )
                 }
             }
