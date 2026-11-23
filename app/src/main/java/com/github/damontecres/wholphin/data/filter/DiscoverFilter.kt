@@ -75,6 +75,10 @@ data class DiscoverFilter(
     // val watchProviders: String? = null,
     val status: List<TvShowStatus>? = null,
     val certification: List<String>? = null,
+    // TMDB production company, only sent for movies. Set when a studio is opened from a movie.
+    val studioId: Int? = null,
+    // TMDB TV network, only sent for TV. Set when a network is opened from a series.
+    val tvNetworkId: Int? = null,
 //    val certificationGte: String? = null,
 //    val certificationLte: String? = null,
 //    val certificationCountry: String? = null, // US
@@ -110,7 +114,7 @@ data class DiscoverFilter(
             page = page,
             language = language,
             genre = genreIds?.joinToString(",") { it.toString() },
-            network = null,
+            network = tvNetworkId,
             keywords = keywordIds?.joinToString(",") { it.toString() },
             excludeKeywords = excludeKeywordIds?.joinToString(",") { it.toString() },
             sortBy = sortBy?.key(true),
@@ -142,7 +146,7 @@ data class DiscoverFilter(
             page = page,
             language = language,
             genre = genreIds?.joinToString(",") { it.toString() },
-//            network = null,
+            studio = studioId,
             keywords = keywordIds?.joinToString(",") { it.toString() },
             excludeKeywords = excludeKeywordIds?.joinToString(",") { it.toString() },
             sortBy = sortBy?.key(false),

@@ -205,6 +205,17 @@ sealed class Destination(
         val item: DiscoverItem,
         // Index to scroll to on the person page grid
         val startIndex: Int = 0,
+        // For a person: list only the films they directed
+        val directedOnly: Boolean = false,
+    ) : Destination(false)
+
+    /**
+     * Every film in a TMDB collection (a franchise), from a movie's page
+     */
+    @Serializable
+    data class DiscoverCollection(
+        val collectionId: Int,
+        val name: String,
     ) : Destination(false)
 
     @Serializable

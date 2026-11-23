@@ -31,6 +31,7 @@ import com.github.damontecres.wholphin.ui.detail.HomeRowGrid
 import com.github.damontecres.wholphin.ui.detail.PersonPage
 import com.github.damontecres.wholphin.ui.detail.PlaylistDetails
 import com.github.damontecres.wholphin.ui.detail.collection.CollectionDetails
+import com.github.damontecres.wholphin.ui.detail.discover.DiscoverCollectionPage
 import com.github.damontecres.wholphin.ui.detail.discover.DiscoverMovieDetails
 import com.github.damontecres.wholphin.ui.detail.discover.DiscoverPersonPage
 import com.github.damontecres.wholphin.ui.detail.discover.DiscoverSeriesDetails
@@ -55,7 +56,7 @@ import com.github.damontecres.wholphin.ui.playback.PlaybackPage
 import com.github.damontecres.wholphin.ui.preferences.PreferencesPage
 import com.github.damontecres.wholphin.ui.preferences.subtitle.SubtitleStylePage
 import com.github.damontecres.wholphin.ui.preferences.user.UserProfilePreferencesPage
-import com.github.damontecres.wholphin.ui.search.SearchPage
+import com.github.damontecres.wholphin.ui.search.SearchTabsPage
 import com.github.damontecres.wholphin.ui.setup.InstallUpdatePage
 import com.github.damontecres.wholphin.ui.slideshow.SlideshowPage
 import com.github.damontecres.wholphin.ui.trailer.TrailerPlayerPage
@@ -109,7 +110,9 @@ fun DestinationContent(
         }
 
         is Destination.PlaybackList -> {
-            if (preferences.appPreferences.playbackPreferences.playerBackend.normalized() == PlayerBackend.EXTERNAL_PLAYER) {
+            if (preferences.appPreferences.playbackPreferences.playerBackend
+                    .normalized() == PlayerBackend.EXTERNAL_PLAYER
+            ) {
                 PlayExternalPage(
                     preferences = preferences,
                     destination = destination,
@@ -397,9 +400,9 @@ fun DestinationContent(
 
         is Destination.Search -> {
             LaunchedEffect(Unit) { onClearBackdrop.invoke() }
-            SearchPage(
+            SearchTabsPage(
                 initialQuery = destination.query,
-                userPreferences = preferences,
+                preferences = preferences,
                 modifier = modifier,
             )
         }
@@ -458,6 +461,7 @@ fun DestinationContent(
                     DiscoverPersonPage(
                         person = destination.item,
                         startIndex = destination.startIndex,
+                        directedOnly = destination.directedOnly,
                         modifier = modifier,
                     )
                 }
@@ -469,6 +473,14 @@ fun DestinationContent(
                     )
                 }
             }
+        }
+
+        is Destination.DiscoverCollection -> {
+            LaunchedEffect(Unit) { onClearBackdrop.invoke() }
+            DiscoverCollectionPage(
+                destination = destination,
+                modifier = modifier,
+            )
         }
 
         is Destination.DiscoverMoreResult -> {

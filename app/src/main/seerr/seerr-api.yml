@@ -1034,6 +1034,10 @@ components:
               type: string
         externalIds:
           $ref: '#/components/schemas/ExternalIds'
+        keywords:
+          type: array
+          items:
+            $ref: '#/components/schemas/Keyword'
         mediaInfo:
           $ref: '#/components/schemas/MediaInfo'
         watchProviders:

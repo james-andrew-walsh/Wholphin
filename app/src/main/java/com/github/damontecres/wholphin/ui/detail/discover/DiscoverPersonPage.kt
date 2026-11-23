@@ -49,10 +49,14 @@ class DiscoverPersonViewModel
         val seerrService: SeerrService,
         private val backdropService: BackdropService,
         @Assisted val item: DiscoverItem,
+        @Assisted val directedOnly: Boolean,
     ) : ViewModel() {
         @AssistedFactory
         interface Factory {
-            fun create(item: DiscoverItem): DiscoverPersonViewModel
+            fun create(
+                item: DiscoverItem,
+                directedOnly: Boolean,
+            ): DiscoverPersonViewModel
         }
 
         val credits = MutableStateFlow<DataLoadingState<List<DiscoverItem>>>(DataLoadingState.Pending)
@@ -61,7 +65,7 @@ class DiscoverPersonViewModel
             viewModelScope.launchIO {
                 backdropService.clearBackdrop()
 
-                val credits = seerrService.personCredits(item.id)
+                val credits = seerrService.personCredits(item.id, directedOnly)
                 this@DiscoverPersonViewModel.credits.update {
                     DataLoadingState.Success(credits)
                 }
@@ -74,14 +78,40 @@ fun DiscoverPersonPage(
     person: DiscoverItem,
     startIndex: Int,
     modifier: Modifier = Modifier,
+    directedOnly: Boolean = false,
     viewModel: DiscoverPersonViewModel =
         hiltViewModel<DiscoverPersonViewModel, DiscoverPersonViewModel.Factory>(
-            creationCallback = { it.create(person) },
+            creationCallback = { it.create(person, directedOnly) },
         ),
 ) {
     val credits by viewModel.credits.collectAsState()
+    DiscoverItemGridPage(
+        title =
+            if (directedOnly && person.title != null) {
+                stringResource(R.string.directed_by, person.title)
+            } else {
+                stringResource(R.string.discover) + (person.title?.let { ": $it" } ?: "")
+            },
+        items = credits,
+        startIndex = startIndex,
+        onClickItem = { viewModel.navigationManager.navigateTo(Destination.DiscoveredItem(it)) },
+        modifier = modifier,
+    )
+}
 
-    when (val state = credits) {
+/**
+ * A titled grid of Discover items that have all been loaded at once, such as a person's credits
+ * or the films in a franchise
+ */
+@Composable
+fun DiscoverItemGridPage(
+    title: String,
+    items: DataLoadingState<List<DiscoverItem>>,
+    startIndex: Int,
+    onClickItem: (DiscoverItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (val state = items) {
         is DataLoadingState.Error -> {
             ErrorMessage(state.message, state.exception, modifier.focusable())
         }
@@ -101,7 +131,7 @@ fun DiscoverPersonPage(
             }
             Column(modifier = modifier) {
                 Text(
-                    text = stringResource(R.string.discover) + (person.title?.let { ": $it" } ?: ""),
+                    text = title,
                     style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
@@ -118,15 +148,11 @@ fun DiscoverPersonPage(
                 } else {
                     CardGrid(
                         pager = state.data,
-                        onClickItem = { index: Int, item: DiscoverItem ->
-                            viewModel.navigationManager.navigateTo(Destination.DiscoveredItem(item))
-                        },
-                        onLongClickItem = { index: Int, item: DiscoverItem ->
-                        },
-                        onClickPlay = { _, item ->
-                        },
+                        onClickItem = { _: Int, item: DiscoverItem -> onClickItem.invoke(item) },
+                        onLongClickItem = { _: Int, _: DiscoverItem -> },
+                        onClickPlay = { _, _ -> },
                         initialPosition = startIndex,
-                        letterPosition = { c: Char -> 0 },
+                        letterPosition = { _: Char -> 0 },
                         gridFocusRequester = focusRequester,
                         showJumpButtons = false,
                         showLetterButtons = false,

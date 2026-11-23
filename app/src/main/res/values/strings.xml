@@ -37,6 +37,32 @@
     <string name="delete">Delete</string>
     <string name="died">Died</string>
     <string name="directed_by">Directed by %1$s</string>
+    <string name="directed_by_label">Directed by</string>
+    <string name="explore_title">Explore</string>
+    <string name="keywords_tab">Keywords</string>
+    <string name="keyword_search_hint">Type or say a keyword such as prison, heist or time travel</string>
+    <string name="keyword_no_match">No keyword matches “%1$s”</string>
+    <string name="keyword_search_needs_seerr">Keyword search needs a Seerr server</string>
+    <string name="keyword_tv_button">TV shows</string>
+    <plurals name="keyword_movies_button">
+        <item quantity="one">%1$,d movie</item>
+        <item quantity="other">%1$,d movies</item>
+    </plurals>
+    <plurals name="keyword_center_status">
+        <item quantity="one">%1$s · %2$,d movie · select to see it</item>
+        <item quantity="other">%1$s · %2$,d movies · select to see them</item>
+    </plurals>
+    <plurals name="keyword_word_status">
+        <item quantity="one">%1$s · %2$,d movie · select to explore it</item>
+        <item quantity="other">%1$s · %2$,d movies · select to explore it</item>
+    </plurals>
+    <string name="explore_franchise">Franchise</string>
+    <string name="explore_studio">Studio</string>
+    <string name="explore_network">Network</string>
+    <string name="explore_keyword">Keyword</string>
+    <string name="explore_studio_title">Studio: %1$s</string>
+    <string name="explore_network_title">Network: %1$s</string>
+    <string name="explore_keyword_title">Keyword: %1$s</string>
     <string name="director">Director</string>
     <string name="disabled">Disabled</string>
     <string name="discovered_servers">Discovered Servers</string>

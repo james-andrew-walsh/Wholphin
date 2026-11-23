@@ -46,12 +46,12 @@ import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.tryRequestFocus
-import com.github.damontecres.wholphin.util.SEERR_MAX_RESULTS
 import com.github.damontecres.wholphin.util.DataLoadingState
 import com.github.damontecres.wholphin.util.DiscoverMovieRequestHandler
 import com.github.damontecres.wholphin.util.DiscoverRequestPager
 import com.github.damontecres.wholphin.util.DiscoverRequestType
 import com.github.damontecres.wholphin.util.DiscoverTvRequestHandler
+import com.github.damontecres.wholphin.util.SEERR_MAX_RESULTS
 import com.github.damontecres.wholphin.util.TrendingMoviesWeekRequestHandler
 import com.github.damontecres.wholphin.util.TrendingRequestHandler
 import com.github.damontecres.wholphin.util.TrendingTvWeekRequestHandler
@@ -83,7 +83,7 @@ class DiscoverRequestViewModel
         private val serverRepository: ServerRepository,
         @Assisted val type: DiscoverRequestType,
         @Assisted startIndex: Int,
-        @Assisted initialFilter: DiscoverFilter,
+        @Assisted private val initialFilter: DiscoverFilter,
         @Assisted private val persistKey: String?,
     ) : ViewModel() {
         @AssistedFactory
@@ -112,10 +112,15 @@ class DiscoverRequestViewModel
                         -> saved?.sortBy ?: initialFilter.sortBy ?: DiscoverSortAndDirection()
 
                         DiscoverRequestType.TRENDING -> DiscoverSortAndDirection()
+
                         DiscoverRequestType.UPCOMING_TV -> DiscoverSortAndDirection()
+
                         DiscoverRequestType.UPCOMING_MOVIES -> DiscoverSortAndDirection()
+
                         DiscoverRequestType.TRENDING_MOVIES_WEEK -> DiscoverSortAndDirection()
+
                         DiscoverRequestType.TRENDING_TV_WEEK -> DiscoverSortAndDirection()
+
                         DiscoverRequestType.UNKNOWN -> DiscoverSortAndDirection()
                     }
                 val filterOptions =
@@ -295,7 +300,8 @@ class DiscoverRequestViewModel
         fun resetFilters() {
             viewModelScope.launchDefault {
                 _state.update { it.copy(startIndex = 0) }
-                fetchData(DiscoverSortAndDirection(), DiscoverFilter())
+                // Keep what the grid was opened with, such as a studio or keyword
+                fetchData(DiscoverSortAndDirection(), initialFilter.copy(sortBy = null))
                 persist()
             }
         }
