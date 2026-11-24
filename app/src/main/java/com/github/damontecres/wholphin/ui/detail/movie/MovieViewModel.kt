@@ -30,9 +30,11 @@ import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.services.UserPreferencesService
 import com.github.damontecres.wholphin.services.deleteItem
 import com.github.damontecres.wholphin.ui.ItemRowFields
+import com.github.damontecres.wholphin.ui.detail.discover.directorItem
 import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
+import com.github.damontecres.wholphin.ui.onMain
 import com.github.damontecres.wholphin.ui.showToast
 import com.github.damontecres.wholphin.util.DataLoadingState
 import dagger.assisted.Assisted
@@ -40,15 +42,18 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.libraryApi
 import org.jellyfin.sdk.api.client.extensions.userLibraryApi
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.BaseItemPerson
 import org.jellyfin.sdk.model.api.MediaStreamType
 import org.jellyfin.sdk.model.api.request.GetSimilarItemsRequest
 import timber.log.Timber
@@ -168,7 +173,10 @@ class MovieViewModel
                 }
                 if (BuildConfig.RATING_PAGES_ENABLED && isMovie) {
                     viewModelScope.launchIO {
-                        val tmdbId = movie.data.providerIds?.get("Tmdb")?.toIntOrNull()
+                        val tmdbId =
+                            movie.data.providerIds
+                                ?.get("Tmdb")
+                                ?.toIntOrNull()
                         val ratings = seerrService.movieRatings(tmdbId, imdbId)
                         _state.update { it.copy(ratings = ratings.keepKnown(it.ratings)) }
                     }
@@ -286,6 +294,41 @@ class MovieViewModel
         fun navigateTo(destination: Destination) {
             release()
             navigationManager.navigateTo(destination)
+        }
+
+        /**
+         * Open every film [director] directed, from Seerr, as the Discover page does. Their page
+         * in the library is opened instead when Seerr isn't connected or Jellyfin has no TMDB id
+         * for them.
+         */
+        fun openDirector(director: BaseItemPerson) {
+            val name = director.name ?: return
+            viewModelScope.launchIO {
+                val tmdbId =
+                    if (seerrService.active.first()) {
+                        try {
+                            api.userLibraryApi
+                                .getItem(director.id)
+                                .content.providerIds
+                                ?.get("Tmdb")
+                                ?.toIntOrNull()
+                        } catch (ex: CancellationException) {
+                            throw ex
+                        } catch (ex: Exception) {
+                            Timber.w(ex, "Could not look up director %s", director.id)
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                val destination =
+                    if (tmdbId != null) {
+                        Destination.DiscoveredItem(directorItem(tmdbId, name), directedOnly = true)
+                    } else {
+                        Destination.MediaItem(director.id, BaseItemKind.PERSON)
+                    }
+                onMain { navigateTo(destination) }
+            }
         }
 
         fun clearChosenStreams(chosenStreams: ChosenStreams?) {
