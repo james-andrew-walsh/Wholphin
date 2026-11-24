@@ -58,6 +58,8 @@ import com.github.damontecres.wholphin.ui.data.ChooseVersionParams
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialog
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialogInfo
 import com.github.damontecres.wholphin.ui.detail.PlaylistDialog
+import com.github.damontecres.wholphin.ui.detail.discover.ExploreLink
+import com.github.damontecres.wholphin.ui.detail.discover.ExploreRow
 import com.github.damontecres.wholphin.ui.discover.DiscoverRow
 import com.github.damontecres.wholphin.ui.discover.DiscoverRowData
 import com.github.damontecres.wholphin.ui.letNotEmpty
@@ -242,6 +244,7 @@ fun MovieDetails(
                 onConfirmDelete = { state.movie?.let { viewModel.deleteItem(it) } },
                 onChooseVersion = { contextActions.onChooseVersion.invoke(movie, it) },
                 onClickDirector = viewModel::openDirector,
+                onClickExplore = { viewModel.navigateTo(it.destination()) },
                 modifier = modifier,
             )
         }
@@ -294,6 +297,7 @@ private const val DISCOVER_ROW = SIMILAR_ROW + 1
 private const val RATING_IMDB_ROW = DISCOVER_ROW + 1
 private const val RATING_RT_ROW = RATING_IMDB_ROW + 1
 private const val DIRECTOR_ROW = RATING_RT_ROW + 1
+private const val EXPLORE_ROW = DIRECTOR_ROW + 1
 
 @Composable
 fun MovieDetailsContent(
@@ -318,11 +322,12 @@ fun MovieDetailsContent(
     onChooseVersion: (MediaSourceInfo) -> Unit,
     modifier: Modifier = Modifier,
     onClickDirector: (BaseItemPerson) -> Unit = {},
+    onClickExplore: (ExploreLink) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var position by rememberInt(0)
-    val focusRequesters = remember { List(DIRECTOR_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(EXPLORE_ROW + 1) { FocusRequester() } }
     val dto = movie.data
     val resumePosition = dto.userData?.playbackPositionTicks?.ticks ?: Duration.ZERO
 
@@ -445,6 +450,18 @@ fun MovieDetailsContent(
                             Modifier
                                 .fillMaxWidth()
                                 .focusRequester(focusRequesters[PEOPLE_ROW]),
+                    )
+                }
+            }
+            state.exploreLinks.letNotEmpty { links ->
+                item {
+                    ExploreRow(
+                        links = links,
+                        onClick = {
+                            position = EXPLORE_ROW
+                            onClickExplore.invoke(it)
+                        },
+                        modifier = Modifier.focusRequester(focusRequesters[EXPLORE_ROW]),
                     )
                 }
             }

@@ -77,6 +77,8 @@ import com.github.damontecres.wholphin.ui.data.AddPlaylistViewModel
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialog
 import com.github.damontecres.wholphin.ui.data.ItemDetailsDialogInfo
 import com.github.damontecres.wholphin.ui.detail.PlaylistDialog
+import com.github.damontecres.wholphin.ui.detail.discover.ExploreLink
+import com.github.damontecres.wholphin.ui.detail.discover.ExploreRow
 import com.github.damontecres.wholphin.ui.discover.DiscoverRow
 import com.github.damontecres.wholphin.ui.discover.DiscoverRowData
 import com.github.damontecres.wholphin.ui.letNotEmpty
@@ -246,6 +248,8 @@ fun SeriesDetails(
                 onClickExtra = { _, extra ->
                     viewModel.navigateTo(extra.destination)
                 },
+                exploreLinks = state.exploreLinks,
+                onClickExplore = { viewModel.navigateTo(it.destination()) },
                 discoverSeries = state.discoverSeries,
                 onClickDiscoverSeries = {
                     state.discoverSeries?.let {
@@ -319,6 +323,7 @@ private const val TRAILER_ROW = PEOPLE_ROW + 1
 private const val EXTRAS_ROW = TRAILER_ROW + 1
 private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val DISCOVER_ROW = SIMILAR_ROW + 1
+private const val EXPLORE_ROW = DISCOVER_ROW + 1
 
 @Composable
 fun SeriesDetailsContent(
@@ -348,13 +353,15 @@ fun SeriesDetailsContent(
     discoverSeries: DiscoverItem?,
     onClickDiscoverSeries: () -> Unit,
     modifier: Modifier = Modifier,
+    exploreLinks: List<ExploreLink> = emptyList(),
+    onClickExplore: (ExploreLink) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
     var position by rememberInt()
-    val focusRequesters = remember { List(DISCOVER_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(EXPLORE_ROW + 1) { FocusRequester() } }
     val playFocusRequester = remember { FocusRequester() }
     RequestOrRestoreFocus(focusRequesters.getOrNull(position))
 
@@ -566,6 +573,18 @@ fun SeriesDetailsContent(
                                 Modifier
                                     .fillMaxWidth()
                                     .focusRequester(focusRequesters[PEOPLE_ROW]),
+                        )
+                    }
+                }
+                if (exploreLinks.isNotEmpty()) {
+                    item {
+                        ExploreRow(
+                            links = exploreLinks,
+                            onClick = {
+                                position = EXPLORE_ROW
+                                onClickExplore.invoke(it)
+                            },
+                            modifier = Modifier.focusRequester(focusRequesters[EXPLORE_ROW]),
                         )
                     }
                 }
