@@ -51,7 +51,7 @@ import kotlin.time.Duration.Companion.minutes
 /**
  * A person to open from the "Directed by" line, by their TMDB id
  */
-private fun directorItem(
+internal fun directorItem(
     id: Int,
     name: String,
 ) = DiscoverItem(

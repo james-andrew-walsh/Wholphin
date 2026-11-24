@@ -2,13 +2,17 @@ package com.github.damontecres.wholphin.ui.detail.movie
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -32,6 +36,7 @@ import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.letNotEmpty
 import com.github.damontecres.wholphin.util.ExceptionHandler
 import kotlinx.coroutines.launch
+import org.jellyfin.sdk.model.api.BaseItemPerson
 import org.jellyfin.sdk.model.api.PersonKind
 
 @Composable
@@ -43,6 +48,8 @@ fun MovieDetailsHeader(
     overviewOnClick: () -> Unit,
     modifier: Modifier = Modifier,
     ratings: MovieRatings? = null,
+    onClickDirector: (BaseItemPerson) -> Unit = {},
+    directorFocusRequester: FocusRequester? = null,
 ) {
     val dto = movie.data
     val context = LocalContext.current
@@ -117,23 +124,48 @@ fun MovieDetailsHeader(
                 )
             }
 
-            val directorName =
+            // Each director's name opens a page of the films they directed, as on the Discover page
+            val directors =
                 remember(movie.data.people) {
                     movie.data.people
                         ?.filter { it.type == PersonKind.DIRECTOR && it.name.isNotNullOrBlank() }
-                        ?.joinToString(", ") { it.name!! }
-                        ?.takeIf { it.isNotNullOrBlank() }
+                        ?.distinctBy { it.id }
+                        .orEmpty()
                 }
 
-            directorName
-                ?.let {
+            if (directors.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = stringResource(R.string.directed_by, it),
+                        text = stringResource(R.string.directed_by_label),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(start = HeaderUtils.startPadding),
                     )
+                    directors.forEachIndexed { index, director ->
+                        OverviewText(
+                            overview = director.name!!,
+                            maxLines = 1,
+                            onClick = { onClickDirector.invoke(director) },
+                            textBoxHeight = Dp.Unspecified,
+                            modifier =
+                                Modifier
+                                    .then(
+                                        if (index == 0 && directorFocusRequester != null) {
+                                            Modifier.focusRequester(directorFocusRequester)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ).onFocusChanged {
+                                        if (it.isFocused) {
+                                            scope.launch(ExceptionHandler()) {
+                                                bringIntoViewRequester.bringIntoView()
+                                            }
+                                        }
+                                    },
+                        )
+                    }
                 }
+            }
         }
     }
 }

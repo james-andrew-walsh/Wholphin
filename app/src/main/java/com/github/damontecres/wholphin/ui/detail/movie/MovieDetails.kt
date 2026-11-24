@@ -70,6 +70,7 @@ import com.github.damontecres.wholphin.util.DiscoverRequestType
 import com.github.damontecres.wholphin.util.ExceptionHandler
 import kotlinx.coroutines.launch
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.BaseItemPerson
 import org.jellyfin.sdk.model.api.MediaSourceInfo
 import org.jellyfin.sdk.model.extensions.ticks
 import org.jellyfin.sdk.model.serializer.toUUID
@@ -240,6 +241,7 @@ fun MovieDetails(
                 canDelete = state.canDelete,
                 onConfirmDelete = { state.movie?.let { viewModel.deleteItem(it) } },
                 onChooseVersion = { contextActions.onChooseVersion.invoke(movie, it) },
+                onClickDirector = viewModel::openDirector,
                 modifier = modifier,
             )
         }
@@ -291,6 +293,7 @@ private const val SIMILAR_ROW = EXTRAS_ROW + 1
 private const val DISCOVER_ROW = SIMILAR_ROW + 1
 private const val RATING_IMDB_ROW = DISCOVER_ROW + 1
 private const val RATING_RT_ROW = RATING_IMDB_ROW + 1
+private const val DIRECTOR_ROW = RATING_RT_ROW + 1
 
 @Composable
 fun MovieDetailsContent(
@@ -314,11 +317,12 @@ fun MovieDetailsContent(
     onConfirmDelete: () -> Unit,
     onChooseVersion: (MediaSourceInfo) -> Unit,
     modifier: Modifier = Modifier,
+    onClickDirector: (BaseItemPerson) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var position by rememberInt(0)
-    val focusRequesters = remember { List(RATING_RT_ROW + 1) { FocusRequester() } }
+    val focusRequesters = remember { List(DIRECTOR_ROW + 1) { FocusRequester() } }
     val dto = movie.data
     val resumePosition = dto.userData?.playbackPositionTicks?.ticks ?: Duration.ZERO
 
@@ -347,6 +351,11 @@ fun MovieDetailsContent(
                         bringIntoViewRequester = bringIntoViewRequester,
                         overviewOnClick = overviewOnClick,
                         ratings = state.ratings,
+                        onClickDirector = {
+                            position = DIRECTOR_ROW
+                            onClickDirector.invoke(it)
+                        },
+                        directorFocusRequester = focusRequesters[DIRECTOR_ROW],
                         modifier =
                             Modifier
                                 .fillMaxWidth()
