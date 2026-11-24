@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -200,7 +201,8 @@ fun KeywordSearchPage(
                 DataLoadingState.Pending,
                 DataLoadingState.Loading,
                 -> {
-                    LoadingPage(Modifier.fillMaxSize())
+                    // Taking focus would pull it out of the search box while typing
+                    LoadingPage(Modifier.fillMaxSize(), focusEnabled = false)
                 }
 
                 is DataLoadingState.Error -> {
@@ -208,8 +210,9 @@ fun KeywordSearchPage(
                 }
 
                 is DataLoadingState.Success -> {
-                    LaunchedEffect(cloud.data.center.id, state.focusCloud) {
-                        if (state.focusCloud) {
+                    // Wait for the new cloud, not the one still showing while it loads
+                    LaunchedEffect(cloud.data.center.id, state.focusCloud, state.refreshing) {
+                        if (state.focusCloud && !state.refreshing) {
                             centerFocusRequester.tryRequestFocus()
                             viewModel.cloudFocused()
                         }
@@ -225,7 +228,10 @@ fun KeywordSearchPage(
                                 viewModel.select(word)
                             }
                         },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .alpha(if (state.refreshing) .4f else 1f),
                     )
                 }
             }

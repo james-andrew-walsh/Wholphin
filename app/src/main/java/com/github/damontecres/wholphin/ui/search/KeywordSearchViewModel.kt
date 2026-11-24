@@ -52,6 +52,8 @@ data class KeywordCloud(
 @Immutable
 data class KeywordSearchState(
     val cloud: DataLoadingState<KeywordCloud>? = null,
+    // A new cloud is loading while the last one stays on screen
+    val refreshing: Boolean = false,
     // Words visited before the current one, so Back can step back through them
     val history: List<CloudWord> = emptyList(),
     // Move focus to the middle word when the cloud loads. Not while typing, which would close the keyboard.
@@ -99,8 +101,11 @@ class KeywordSearchViewModel
          * Show the cloud for the keyword that best matches [query]: one with exactly that name,
          * otherwise the shortest name containing it, since shorter names tend to be broader
          *
-         * @param immediate search now rather than after a pause in typing, and move focus to the
-         * cloud, as for a spoken search or the keyboard's search key
+         * While typing, it waits for a pause and at least [MIN_TYPED_LENGTH] letters, so the cloud
+         * isn't rebuilt for every letter.
+         *
+         * @param immediate search now, and move focus to the cloud, as for a spoken search or the
+         * keyboard's search key
          */
         fun search(
             query: String,
@@ -112,10 +117,10 @@ class KeywordSearchViewModel
             searchJob?.cancel()
             // What is typed now replaces any word chosen in the cloud
             _state.update { it.copy(chosenWord = null) }
-            if (trimmed.isBlank()) return
+            if (trimmed.isBlank() || (!immediate && trimmed.length < MIN_TYPED_LENGTH)) return
             searchJob =
                 viewModelScope.launchIO {
-                    if (!immediate) delay(600.milliseconds)
+                    if (!immediate) delay(TYPING_PAUSE)
                     val best =
                         try {
                             seerrService.api.searchApi
@@ -138,7 +143,7 @@ class KeywordSearchViewModel
                         }
                     if (best == null) {
                         cloudJob?.cancel()
-                        _state.update { it.copy(cloud = null, history = emptyList(), noMatch = trimmed) }
+                        _state.update { it.copy(cloud = null, refreshing = false, history = emptyList(), noMatch = trimmed) }
                         return@launchIO
                     }
                     val current = (state.value.cloud as? DataLoadingState.Success)?.data?.center
@@ -190,7 +195,14 @@ class KeywordSearchViewModel
             focusCloud: Boolean,
         ) {
             cloudJob?.cancel()
-            _state.update { it.copy(cloud = DataLoadingState.Loading, focusCloud = focusCloud) }
+            _state.update {
+                // Keep the last cloud on screen, rather than blanking it, until the new one is ready
+                if (it.cloud is DataLoadingState.Success) {
+                    it.copy(refreshing = true, focusCloud = focusCloud)
+                } else {
+                    it.copy(cloud = DataLoadingState.Loading, refreshing = false, focusCloud = focusCloud)
+                }
+            }
             cloudJob =
                 viewModelScope.launchIO {
                     val result =
@@ -202,7 +214,7 @@ class KeywordSearchViewModel
                             Timber.w(ex, "Could not build keyword cloud for %s", word.id)
                             DataLoadingState.Error(ex)
                         }
-                    _state.update { it.copy(cloud = result) }
+                    _state.update { it.copy(cloud = result, refreshing = false) }
                 }
         }
 
@@ -326,6 +338,10 @@ class KeywordSearchViewModel
             }
 
         companion object {
+            // How long typing must pause, and how many letters it needs, before the cloud updates
+            private val TYPING_PAUSE = 1000.milliseconds
+            private const val MIN_TYPED_LENGTH = 3
+
             private const val MAX_FAMILY = 6
 
             // 3 pages of the most popular movies with the keyword
