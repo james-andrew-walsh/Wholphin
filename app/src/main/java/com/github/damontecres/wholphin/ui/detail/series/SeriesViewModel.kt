@@ -28,6 +28,8 @@ import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.services.UserPreferencesService
 import com.github.damontecres.wholphin.services.deleteItem
 import com.github.damontecres.wholphin.ui.ItemRowFields
+import com.github.damontecres.wholphin.ui.detail.discover.ExploreLink
+import com.github.damontecres.wholphin.ui.detail.discover.exploreLinks
 import com.github.damontecres.wholphin.ui.equalsNotNull
 import com.github.damontecres.wholphin.ui.gt
 import com.github.damontecres.wholphin.ui.launchDefault
@@ -257,12 +259,10 @@ class SeriesViewModel
                     }
                     viewModelScope.launchIO {
                         seerrService.active.collectLatest { active ->
-                            val tv =
+                            val details =
                                 if (active) {
                                     try {
-                                        seerrService
-                                            .getTvSeries(series)
-                                            ?.let { seerrService.createDiscoverItem(it) }
+                                        seerrService.getTvSeries(series)
                                     } catch (ex: Exception) {
                                         Timber.e(ex)
                                         null
@@ -270,7 +270,20 @@ class SeriesViewModel
                                 } else {
                                     null
                                 }
-                            _state.update { it.copy(discoverSeries = tv) }
+                            val tv =
+                                try {
+                                    details?.let { seerrService.createDiscoverItem(it) }
+                                } catch (ex: Exception) {
+                                    Timber.e(ex)
+                                    null
+                                }
+                            _state.update {
+                                it.copy(
+                                    discoverSeries = tv,
+                                    // The networks and keywords to explore, as on the Discover page
+                                    exploreLinks = details?.let(::exploreLinks).orEmpty(),
+                                )
+                            }
                         }
                     }
                 }
@@ -896,4 +909,5 @@ data class SeriesState(
     val discovered: List<DiscoverItem> = emptyList(),
     val discoverSeries: DiscoverItem? = null,
     val chosenStreams: ChosenStreams? = null,
+    val exploreLinks: List<ExploreLink> = emptyList(),
 )

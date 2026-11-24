@@ -30,7 +30,9 @@ import com.github.damontecres.wholphin.services.TrailerService
 import com.github.damontecres.wholphin.services.UserPreferencesService
 import com.github.damontecres.wholphin.services.deleteItem
 import com.github.damontecres.wholphin.ui.ItemRowFields
+import com.github.damontecres.wholphin.ui.detail.discover.ExploreLink
 import com.github.damontecres.wholphin.ui.detail.discover.directorItem
+import com.github.damontecres.wholphin.ui.detail.discover.libraryExploreLinks
 import com.github.damontecres.wholphin.ui.launchDefault
 import com.github.damontecres.wholphin.ui.launchIO
 import com.github.damontecres.wholphin.ui.nav.Destination
@@ -162,6 +164,11 @@ class MovieViewModel
                             extras = extras,
                         )
                     }
+                }
+                viewModelScope.launchIO {
+                    // The franchise, studios and keywords to explore, as on the Discover page
+                    val links = seerrService.libraryExploreLinks(movie)
+                    _state.update { it.copy(exploreLinks = links) }
                 }
                 viewModelScope.launchIO {
                     val results = seerrService.similar(movie).orEmpty()
@@ -364,6 +371,7 @@ data class MovieState(
     val ratings: MovieRatings? = null,
     val chosenStreams: ChosenStreams? = null,
     val canDelete: Boolean = false,
+    val exploreLinks: List<ExploreLink> = emptyList(),
 ) {
     val movie: BaseItem? = (loading as? DataLoadingState.Success<BaseItem>)?.data
 }

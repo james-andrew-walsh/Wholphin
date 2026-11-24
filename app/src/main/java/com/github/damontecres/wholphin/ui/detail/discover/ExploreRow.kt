@@ -29,11 +29,17 @@ import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.api.seerr.model.MovieDetails
 import com.github.damontecres.wholphin.api.seerr.model.TvDetails
 import com.github.damontecres.wholphin.data.filter.DiscoverFilter
+import com.github.damontecres.wholphin.data.model.BaseItem
+import com.github.damontecres.wholphin.services.SeerrService
 import com.github.damontecres.wholphin.ui.components.Button
 import com.github.damontecres.wholphin.ui.isNotNullOrBlank
 import com.github.damontecres.wholphin.ui.nav.Destination
 import com.github.damontecres.wholphin.ui.util.ResArgStringProvider
 import com.github.damontecres.wholphin.util.DiscoverRequestType
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
+import org.jellyfin.sdk.model.api.BaseItemKind
+import timber.log.Timber
 
 /**
  * Something on a title's page that leads to more titles: its franchise, a studio or network that
@@ -135,6 +141,30 @@ fun exploreLinks(series: TvDetails): List<ExploreLink> =
             ?.let(::addAll)
         addAll(keywordLinks(series.keywords?.map { it.id to it.name }, isTv = true))
     }
+
+/**
+ * The [ExploreLink]s for a movie or series in the library, from Seerr's details for its TMDB id.
+ * Empty when Seerr isn't connected, the item has no TMDB id, or Seerr fails.
+ */
+suspend fun SeerrService.libraryExploreLinks(item: BaseItem): List<ExploreLink> {
+    val tmdbId =
+        item.data.providerIds
+            ?.get("Tmdb")
+            ?.toIntOrNull() ?: return emptyList()
+    if (!active.first()) return emptyList()
+    return try {
+        when (item.type) {
+            BaseItemKind.MOVIE -> exploreLinks(api.moviesApi.movieMovieIdGet(movieId = tmdbId))
+            BaseItemKind.SERIES -> exploreLinks(api.tvApi.tvTvIdGet(tvId = tmdbId))
+            else -> emptyList()
+        }
+    } catch (ex: CancellationException) {
+        throw ex
+    } catch (ex: Exception) {
+        Timber.w(ex, "Could not get explore links for %s", item.id)
+        emptyList()
+    }
+}
 
 private fun keywordLinks(
     keywords: List<Pair<Int?, String?>>?,
