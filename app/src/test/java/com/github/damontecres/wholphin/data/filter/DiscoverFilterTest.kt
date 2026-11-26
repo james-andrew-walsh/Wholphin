@@ -163,6 +163,37 @@ class DiscoverFilterTest {
             )
         }
 
+    private val byRating = DiscoverSortAndDirection(DiscoverSort.TMDB_VOTE, SortOrder.DESCENDING)
+
+    @Test
+    fun `sorting by rating adds a minimum vote count`() =
+        runTest {
+            DiscoverFilter(sortBy = byRating).discoverMovies(searchApi, 1)
+            DiscoverFilter(sortBy = byRating).discoverTv(searchApi, 1)
+
+            assertEquals(listOf("1000", "500"), urls.map { it.queryParameter("voteCountGte") })
+        }
+
+    @Test
+    fun `sorting by rating within a keyword, studio or decade uses a lower minimum`() =
+        runTest {
+            DiscoverFilter(sortBy = byRating, keywordIds = listOf(1)).discoverMovies(searchApi, 1)
+            DiscoverFilter(sortBy = byRating, studioId = 41077).discoverMovies(searchApi, 1)
+            DiscoverFilter(sortBy = byRating, primaryReleaseDateLte = "1959-12-31").discoverMovies(searchApi, 1)
+            DiscoverFilter(sortBy = byRating, tvNetworkId = 49).discoverTv(searchApi, 1)
+
+            assertEquals(listOf("300", "300", "300", "150"), urls.map { it.queryParameter("voteCountGte") })
+        }
+
+    @Test
+    fun `a chosen minimum wins, and other sorts add none`() =
+        runTest {
+            DiscoverFilter(sortBy = byRating, voteCountGte = 5000).discoverMovies(searchApi, 1)
+            DiscoverFilter(sortBy = DiscoverSortAndDirection()).discoverMovies(searchApi, 1)
+
+            assertEquals(listOf("5000", null), urls.map { it.queryParameter("voteCountGte") })
+        }
+
     @Test
     fun `sort by name uses the TV name, the shared one is not valid for TV`() {
         val sort = DiscoverSortAndDirection(DiscoverSort.ORIGINAL_NAME, SortOrder.ASCENDING)
