@@ -7,6 +7,7 @@ import com.github.damontecres.wholphin.data.filter.CommunityRatingFilter
 import com.github.damontecres.wholphin.data.filter.DecadeFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverFilterBy
 import com.github.damontecres.wholphin.data.filter.DiscoverLanguageFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverMinimumVotesFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverMovieStudiosFilter
@@ -15,8 +16,8 @@ import com.github.damontecres.wholphin.data.filter.DiscoverRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvContentRatingFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvGenreFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStatusFilter
-import com.github.damontecres.wholphin.data.filter.DiscoverTvYearFilter
 import com.github.damontecres.wholphin.data.filter.DiscoverTvStudiosFilter
+import com.github.damontecres.wholphin.data.filter.DiscoverTvYearFilter
 import com.github.damontecres.wholphin.data.filter.FavoriteFilter
 import com.github.damontecres.wholphin.data.filter.FilterBy
 import com.github.damontecres.wholphin.data.filter.FilterValueOption
@@ -264,6 +265,12 @@ class FilterOptionCache
                 DiscoverRatingFilter -> {
                     (1..10).map {
                         FilterValueOption("$it", it)
+                    }
+                }
+
+                DiscoverMinimumVotesFilter -> {
+                    listOf(100, 300, 1000, 5000, 10000).map {
+                        FilterValueOption("%,d+".format(it), it)
                     }
                 }
 

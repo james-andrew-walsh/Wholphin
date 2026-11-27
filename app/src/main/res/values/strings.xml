@@ -21,6 +21,7 @@
     <string name="collections">Collections</string>
     <string name="commercial">Commercial</string>
     <string name="community_rating">Community Rating</string>
+    <string name="minimum_votes">Minimum votes</string>
     <string name="compose_error_message_title">An error occurred! Press the button to send logs to your server.</string>
     <string name="confirm">Confirm</string>
     <string name="continue_watching">Continue watching</string>

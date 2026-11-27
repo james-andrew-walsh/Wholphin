@@ -85,6 +85,35 @@ data class DiscoverFilter(
 //    val certificationMatchExact: Boolean? = null,
 ) {
     /**
+     * The minimum number of votes to ask for
+     *
+     * TMDB sorts by average rating with no minimum, which puts titles with a single 10/10 vote
+     * first. So when sorting by rating without a minimum chosen, one is added: the same as the
+     * Highly rated shelves, or lower when other filters already narrow the list so it isn't left
+     * nearly empty.
+     */
+    fun minimumVotes(isTv: Boolean): Int? {
+        if (voteCountGte != null || sortBy?.sort != DiscoverSort.TMDB_VOTE) return voteCountGte
+        val narrowed =
+            !keywordIds.isNullOrEmpty() ||
+                !networkIds.isNullOrEmpty() ||
+                studioId != null ||
+                tvNetworkId != null ||
+                language != null ||
+                if (isTv) {
+                    firstAirDateGte != null || firstAirDateLte != null
+                } else {
+                    primaryReleaseDateGte != null || primaryReleaseDateLte != null
+                }
+        return when {
+            isTv && narrowed -> NARROWED_TV_MIN_VOTES
+            isTv -> TV_HIGHLY_RATED_MIN_VOTES
+            narrowed -> NARROWED_MIN_VOTES
+            else -> HIGHLY_RATED_MIN_VOTES
+        }
+    }
+
+    /**
      * Returns how many of filters are actually being used in this
      */
     fun countFilters(filterOptions: List<DiscoverFilterBy<*>>): Int {
@@ -124,7 +153,7 @@ data class DiscoverFilter(
             withRuntimeLte = withRuntimeLte?.inWholeMinutes?.toInt(),
             voteAverageGte = voteAverageGte,
             voteAverageLte = voteAverageLte,
-            voteCountGte = voteCountGte,
+            voteCountGte = minimumVotes(isTv = true),
             voteCountLte = voteCountLte,
             // TODO
 //            watchRegion = watchRegion,
@@ -158,7 +187,7 @@ data class DiscoverFilter(
             withRuntimeLte = withRuntimeLte?.inWholeMinutes?.toInt(),
             voteAverageGte = voteAverageGte,
             voteAverageLte = voteAverageLte,
-            voteCountGte = voteCountGte,
+            voteCountGte = minimumVotes(isTv = false),
             voteCountLte = voteCountLte,
             // TODO
 //            watchRegion = watchRegion,
@@ -173,11 +202,16 @@ data class DiscoverFilter(
         )
 }
 
+// The lower minimum used when other filters already narrow the list
+private const val NARROWED_MIN_VOTES = 300
+private const val NARROWED_TV_MIN_VOTES = 150
+
 val discoverMovieFilters =
     listOf(
         DiscoverMovieGenreFilter,
         DiscoverMovieStudiosFilter,
         DiscoverRatingFilter,
+        DiscoverMinimumVotesFilter,
         DiscoverMovieContentRatingFilter,
     )
 
@@ -193,6 +227,7 @@ val discoverTvFilters =
         DiscoverTvGenreFilter,
         DiscoverTvStudiosFilter,
         DiscoverRatingFilter,
+        DiscoverMinimumVotesFilter,
         DiscoverTvContentRatingFilter,
         DiscoverTvStatusFilter,
     )
@@ -313,6 +348,23 @@ data object DiscoverRatingFilter : DiscoverFilterBy<Int> {
         value: Int?,
         filter: DiscoverFilter,
     ): DiscoverFilter = filter.copy(voteAverageGte = value)
+}
+
+/**
+ * The fewest TMDB votes a title needs. Without it, sorting by rating adds a minimum by itself; see
+ * [DiscoverFilter.minimumVotes].
+ */
+data object DiscoverMinimumVotesFilter : DiscoverFilterBy<Int> {
+    override val stringRes: Int = R.string.minimum_votes
+
+    override val supportMultiple: Boolean = false
+
+    override fun get(filter: DiscoverFilter): Int? = filter.voteCountGte
+
+    override fun set(
+        value: Int?,
+        filter: DiscoverFilter,
+    ): DiscoverFilter = filter.copy(voteCountGte = value)
 }
 
 /**
